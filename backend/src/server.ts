@@ -6,6 +6,7 @@ import { testRedisConnection, closeRedis } from './config/redis';
 import { setupEnrollmentWorker, shutdownWorker } from './workers/enrollmentWorker';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 import { apiLimiter } from './middleware/rateLimiter';
+import { waitForServices, displayServiceStatus } from './utils/startup';
 
 // Import routes
 import authRoutes from './routes/authRoutes';
@@ -112,19 +113,11 @@ app.use(errorHandler);
  */
 const startServer = async () => {
   try {
-    // Test database connection
-    console.log('Testing database connection...');
-    const dbConnected = await testConnection();
-    if (!dbConnected) {
-      throw new Error('Failed to connect to database');
-    }
+    // Wait for database and redis to be ready (important for Docker)
+    await waitForServices();
 
-    // Test Redis connection
-    console.log('Testing Redis connection...');
-    const redisConnected = await testRedisConnection();
-    if (!redisConnected) {
-      console.warn('⚠ Warning: Redis connection failed. Continuing without cache.');
-    }
+    // Display service status
+    await displayServiceStatus();
 
     // Setup enrollment queue worker
     console.log('Setting up enrollment worker...');
@@ -132,12 +125,17 @@ const startServer = async () => {
 
     // Start Express server
     const server = app.listen(PORT, () => {
-      console.log('='.repeat(50));
-      console.log(`✓ Server started successfully`);
-      console.log(`✓ Environment: ${process.env.NODE_ENV || 'development'}`);
-      console.log(`✓ Server running on port ${PORT}`);
-      console.log(`✓ API URL: http://localhost:${PORT}`);
-      console.log('='.repeat(50));
+      console.log('\n╔═══════════════════════════════════════════════════════╗');
+      console.log('║                                                       ║');
+      console.log('║   🚀 CUHK Course Selection System                    ║');
+      console.log('║                                                       ║');
+      console.log(`║   Server running on: http://localhost:${PORT}        ║`);
+      console.log(`║   Environment: ${process.env.NODE_ENV || 'development'}                            ║`);
+      console.log('║                                                       ║');
+      console.log(`║   📚 API Docs: http://localhost:${PORT}/             ║`);
+      console.log(`║   🏥 Health: http://localhost:${PORT}/health         ║`);
+      console.log('║                                                       ║');
+      console.log('╚═══════════════════════════════════════════════════════╝\n');
     });
 
     // Graceful shutdown handler
