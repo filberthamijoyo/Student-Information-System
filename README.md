@@ -116,11 +116,12 @@ Frontend runs on: `http://localhost:5173`
 | Instructor    | inst001      | Password123!  |
 | Administrator | admin001     | Password123!  |
 
-### Sample Courses (24 total)
+### Sample Courses (49 Real CUHK Courses)
 - **CSC3170** - Database System (170 seats)
-- **DDA3020** - Machine Learning (150 seats)
-- **ECO2011** - Basic Microeconomics (200 seats)
-- And 21 more...
+- **DDA3020** - Machine Learning (260 seats)
+- **MAT1001** - Single Variable Calculus I (1395 seats)
+- **ITE1000** - Information Technology Essentials (3606 seats)
+- And 45 more real CUHK Fall 2025 courses...
 
 ---
 
@@ -170,6 +171,41 @@ await prisma.$transaction(async (tx) => {
   isolationLevel: Prisma.TransactionIsolationLevel.Serializable
 });
 ```
+
+---
+
+## 🎨 Frontend Features
+
+### Course Browsing
+- **Search & Filters**: Search courses by code, name, or instructor with real-time filtering
+- **Department Filter**: Filter courses by department (SDS, SME, SSE, HSS, MED)
+- **Course Cards**: Rich course information display with:
+  - Course code, name, and credits
+  - Instructor and department
+  - Prerequisites and descriptions
+  - Time slots and locations
+  - Real-time enrollment capacity with visual progress bars
+
+### Enrollment Management
+- **One-Click Enrollment**: Enroll in courses with real-time status updates
+- **Job Status Polling**: Track enrollment processing status with visual feedback
+- **Automatic Waitlist**: Get automatically added to waitlist when course is full
+- **Course Dropping**: Drop enrolled courses or leave waitlist
+- **Success/Error Messages**: Clear feedback for all enrollment actions
+
+### My Enrollments Page
+- **Enrollment Summary**: View confirmed courses, total credits, and waitlist status
+- **Weekly Schedule View**: Visual weekly schedule organized by day of week
+- **Course Details**: Full course information for all enrollments
+- **Waitlist Tracking**: See all waitlisted courses with automatic promotion notification
+- **Quick Actions**: Drop courses or leave waitlist with confirmation dialogs
+
+### Navigation & UX
+- **Protected Routes**: Automatic redirect to login for unauthenticated users
+- **Shared Layout**: Consistent navigation bar across all pages
+- **Active Route Highlighting**: Clear visual indication of current page
+- **Loading States**: Smooth loading indicators for all async operations
+- **Responsive Design**: Mobile-friendly interface with Tailwind CSS
 
 ---
 
