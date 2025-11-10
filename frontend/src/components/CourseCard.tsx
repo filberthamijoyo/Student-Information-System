@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { api } from '../services/api';
+import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
 interface CourseCardProps {
