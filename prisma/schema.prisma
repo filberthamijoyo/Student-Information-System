@@ -1,0 +1,179 @@
+// Prisma Schema for CUHK Course Selection System
+// This schema includes comprehensive models for handling concurrent course enrollment
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// USER MODEL
+// ============================================================================
+
+model User {
+  id             Int          @id @default(autoincrement())
+  userIdentifier String       @unique @map("user_identifier")
+  email          String       @unique
+  passwordHash   String       @map("password_hash")
+  fullName       String       @map("full_name")
+  role           Role         @default(STUDENT)
+  major          String?
+  yearLevel      Int?         @map("year_level")
+  department     String?
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+
+  // Relations
+  enrollments    Enrollment[]
+  taughtCourses  Course[]     @relation("InstructorCourses")
+  auditLogs      AuditLog[]
+
+  @@map("users")
+  @@index([email])
+  @@index([role])
+  @@index([userIdentifier])
+}
+
+enum Role {
+  STUDENT
+  INSTRUCTOR
+  ADMINISTRATOR
+}
+
+// ============================================================================
+// COURSE MODEL
+// ============================================================================
+
+model Course {
+  id                Int           @id @default(autoincrement())
+  courseCode        String        @unique @map("course_code")
+  courseName        String        @map("course_name")
+  department        String
+  credits           Int
+  maxCapacity       Int           @map("max_capacity")
+  currentEnrollment Int           @default(0) @map("current_enrollment")
+  description       String?       @db.Text
+  prerequisites     String?       @db.Text
+  semester          Semester
+  year              Int
+  status            CourseStatus  @default(ACTIVE)
+  instructorId      Int?          @map("instructor_id")
+  version           Int           @default(0) // For optimistic locking
+  createdAt         DateTime      @default(now()) @map("created_at")
+  updatedAt         DateTime      @updatedAt @map("updated_at")
+
+  // Relations
+  instructor        User?         @relation("InstructorCourses", fields: [instructorId], references: [id])
+  timeSlots         TimeSlot[]
+  enrollments       Enrollment[]
+
+  @@map("courses")
+  @@index([courseCode])
+  @@index([department])
+  @@index([semester, year])
+  @@index([status])
+  @@index([instructorId])
+}
+
+enum Semester {
+  FALL
+  SPRING
+  SUMMER
+}
+
+enum CourseStatus {
+  ACTIVE
+  INACTIVE
+  FULL
+}
+
+// ============================================================================
+// TIME SLOT MODEL
+// ============================================================================
+
+model TimeSlot {
+  id        Int       @id @default(autoincrement())
+  courseId  Int       @map("course_id")
+  dayOfWeek DayOfWeek @map("day_of_week")
+  startTime String    @map("start_time") // Format: "09:00"
+  endTime   String    @map("end_time")   // Format: "10:30"
+  location  String?
+
+  // Relations
+  course    Course    @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@map("time_slots")
+  @@index([courseId])
+  @@index([dayOfWeek])
+}
+
+enum DayOfWeek {
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+  SATURDAY
+  SUNDAY
+}
+
+// ============================================================================
+// ENROLLMENT MODEL
+// ============================================================================
+
+model Enrollment {
+  id               Int              @id @default(autoincrement())
+  userId           Int              @map("user_id")
+  courseId         Int              @map("course_id")
+  status           EnrollmentStatus @default(PENDING)
+  waitlistPosition Int?             @map("waitlist_position")
+  grade            String?
+  enrolledAt       DateTime         @default(now()) @map("enrolled_at")
+  updatedAt        DateTime         @updatedAt @map("updated_at")
+
+  // Relations
+  user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course           Course           @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, courseId])
+  @@map("enrollments")
+  @@index([userId])
+  @@index([courseId])
+  @@index([status])
+}
+
+enum EnrollmentStatus {
+  PENDING
+  CONFIRMED
+  WAITLISTED
+  DROPPED
+  REJECTED
+}
+
+// ============================================================================
+// AUDIT LOG MODEL
+// ============================================================================
+
+model AuditLog {
+  id         Int      @id @default(autoincrement())
+  userId     Int      @map("user_id")
+  action     String
+  entityType String   @map("entity_type")
+  entityId   Int      @map("entity_id")
+  changes    Json?
+  ipAddress  String?  @map("ip_address")
+  timestamp  DateTime @default(now())
+
+  // Relations
+  user       User     @relation(fields: [userId], references: [id])
+
+  @@map("audit_logs")
+  @@index([userId])
+  @@index([action])
+  @@index([timestamp])
+  @@index([entityType, entityId])
+}

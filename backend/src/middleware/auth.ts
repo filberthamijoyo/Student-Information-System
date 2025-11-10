@@ -1,178 +1,136 @@
 import { Response, NextFunction } from 'express';
-import jwt from 'jsonwebtoken';
 import { AuthRequest } from '../types/express.types';
-import { JWTPayload, UserRole } from '../types/user.types';
-import { pool } from '../config/database';
+import { verifyAccessToken } from '../services/authService';
+import { prisma } from '../config/prisma';
 
 /**
- * Middleware to authenticate JWT token
+ * Authentication Middleware (Prisma-based)
  */
-export const authenticate = async (
+
+/**
+ * Authenticate JWT token
+ */
+export async function authenticate(
   req: AuthRequest,
   res: Response,
   next: NextFunction
-): Promise<void> => {
+) {
   try {
-    // Get token from Authorization header
     const authHeader = req.headers.authorization;
 
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      res.status(401).json({
+      return res.status(401).json({
         success: false,
-        message: 'No token provided. Please authenticate.',
+        message: 'No token provided'
       });
-      return;
     }
 
-    const token = authHeader.substring(7); // Remove 'Bearer ' prefix
+    const token = authHeader.substring(7);
 
     // Verify token
-    const jwtSecret = process.env.JWT_SECRET;
-    if (!jwtSecret) {
-      throw new Error('JWT_SECRET is not defined in environment variables');
-    }
+    const decoded = verifyAccessToken(token);
 
-    const decoded = jwt.verify(token, jwtSecret) as JWTPayload;
+    // Fetch user to ensure they still exist
+    const user = await prisma.user.findUnique({
+      where: { id: decoded.userId },
+      select: {
+        id: true,
+        userIdentifier: true,
+        email: true,
+        fullName: true,
+        role: true,
+        major: true,
+        yearLevel: true,
+        department: true
+      }
+    });
 
-    // TODO: Fetch user from database to ensure user still exists and is active
-    const result = await pool.query(
-      `SELECT id, email, first_name, last_name, role, student_id, major, year, created_at, updated_at
-       FROM users
-       WHERE id = $1`,
-      [decoded.userId]
-    );
-
-    if (result.rows.length === 0) {
-      res.status(401).json({
+    if (!user) {
+      return res.status(401).json({
         success: false,
-        message: 'User not found or has been deactivated.',
+        message: 'User not found'
       });
-      return;
     }
 
-    // Attach user information to request object
-    req.user = result.rows[0];
-    req.userId = decoded.userId;
-    req.userRole = decoded.role;
-    req.token = token;
+    // Attach user to request
+    (req as any).user = user;
+    (req as any).userId = user.id;
+    (req as any).userRole = user.role;
+    (req as any).token = token;
 
     next();
-  } catch (error) {
-    if (error instanceof jwt.JsonWebTokenError) {
-      res.status(401).json({
-        success: false,
-        message: 'Invalid token. Please authenticate again.',
-      });
-      return;
-    }
-
-    if (error instanceof jwt.TokenExpiredError) {
-      res.status(401).json({
-        success: false,
-        message: 'Token has expired. Please login again.',
-      });
-      return;
-    }
-
-    console.error('Authentication error:', error);
-    res.status(500).json({
+  } catch (error: any) {
+    return res.status(401).json({
       success: false,
-      message: 'Authentication failed due to server error.',
+      message: error.message || 'Invalid token'
     });
   }
-};
+}
 
 /**
- * Middleware to require specific role(s)
- * Usage: requireRole('administrator') or requireRole(['administrator', 'instructor'])
+ * Require specific role(s)
  */
-export const requireRole = (...allowedRoles: UserRole[]) => {
-  return (req: AuthRequest, res: Response, next: NextFunction): void => {
-    if (!req.userRole) {
-      res.status(401).json({
+export function requireRole(...allowedRoles: string[]) {
+  return (req: AuthRequest, res: Response, next: NextFunction) => {
+    const userRole = (req as any).userRole;
+
+    if (!userRole) {
+      return res.status(401).json({
         success: false,
-        message: 'Authentication required.',
+        message: 'Authentication required'
       });
-      return;
     }
 
-    if (!allowedRoles.includes(req.userRole)) {
-      res.status(403).json({
+    if (!allowedRoles.includes(userRole)) {
+      return res.status(403).json({
         success: false,
-        message: `Access denied. Required role(s): ${allowedRoles.join(', ')}`,
+        message: `Access denied. Required role(s): ${allowedRoles.join(', ')}`
       });
-      return;
     }
 
     next();
   };
-};
+}
 
 /**
- * Middleware to check if user is a student
+ * Pre-defined role middlewares
  */
-export const requireStudent = requireRole('student');
+export const requireStudent = requireRole('STUDENT');
+export const requireInstructor = requireRole('INSTRUCTOR');
+export const requireAdmin = requireRole('ADMINISTRATOR');
+export const requireInstructorOrAdmin = requireRole('INSTRUCTOR', 'ADMINISTRATOR');
 
 /**
- * Middleware to check if user is an instructor
+ * Optional authentication
  */
-export const requireInstructor = requireRole('instructor');
-
-/**
- * Middleware to check if user is an administrator
- */
-export const requireAdmin = requireRole('administrator');
-
-/**
- * Middleware to check if user is an instructor or administrator
- */
-export const requireInstructorOrAdmin = requireRole('instructor', 'administrator');
-
-/**
- * Optional authentication - doesn't fail if no token provided
- * Useful for endpoints that behave differently for authenticated users
- */
-export const optionalAuth = async (
+export async function optionalAuth(
   req: AuthRequest,
   res: Response,
   next: NextFunction
-): Promise<void> => {
+) {
   try {
     const authHeader = req.headers.authorization;
 
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      // No token provided, continue without authentication
-      next();
-      return;
+      return next();
     }
 
     const token = authHeader.substring(7);
-    const jwtSecret = process.env.JWT_SECRET;
+    const decoded = verifyAccessToken(token);
 
-    if (!jwtSecret) {
-      next();
-      return;
-    }
+    const user = await prisma.user.findUnique({
+      where: { id: decoded.userId }
+    });
 
-    const decoded = jwt.verify(token, jwtSecret) as JWTPayload;
-
-    const result = await pool.query(
-      `SELECT id, email, first_name, last_name, role, student_id, major, year, created_at, updated_at
-       FROM users
-       WHERE id = $1`,
-      [decoded.userId]
-    );
-
-    if (result.rows.length > 0) {
-      req.user = result.rows[0];
-      req.userId = decoded.userId;
-      req.userRole = decoded.role;
-      req.token = token;
+    if (user) {
+      (req as any).user = user;
+      (req as any).userId = user.id;
+      (req as any).userRole = user.role;
     }
 
     next();
   } catch (error) {
-    // If token verification fails, just continue without auth
+    // Continue without auth if token is invalid
     next();
   }
-};
+}
