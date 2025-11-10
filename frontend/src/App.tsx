@@ -1,8 +1,11 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { Layout } from './components/Layout';
 import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
+import { CourseList } from './pages/CourseList';
+import { MyEnrollments } from './pages/MyEnrollments';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -42,7 +45,29 @@ function App() {
               path="/"
               element={
                 <ProtectedRoute>
-                  <Dashboard />
+                  <Layout>
+                    <Dashboard />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/courses"
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <CourseList />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/enrollments"
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <MyEnrollments />
+                  </Layout>
                 </ProtectedRoute>
               }
             />
