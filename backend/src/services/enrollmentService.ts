@@ -116,6 +116,28 @@ export async function processEnrollment(userId: number, courseId: number) {
       throw new ValidationError('User not found');
     }
 
+    // 2b. Check for existing enrollment (prevents duplicate enrollments on retry)
+    const existingEnrollment = await tx.enrollment.findUnique({
+      where: {
+        userId_courseId: {
+          userId,
+          courseId
+        }
+      }
+    });
+
+    if (existingEnrollment) {
+      if (existingEnrollment.status === EnrollmentStatus.CONFIRMED) {
+        throw new ValidationError('You are already enrolled in this course');
+      }
+      if (existingEnrollment.status === EnrollmentStatus.PENDING) {
+        throw new ValidationError('You already have a pending enrollment request for this course');
+      }
+      if (existingEnrollment.status === EnrollmentStatus.WAITLISTED) {
+        throw new ValidationError('You are already on the waitlist for this course');
+      }
+    }
+
     // 3. Check prerequisites
     if (course.prerequisites) {
       // Parse prerequisites (comma-separated course codes)

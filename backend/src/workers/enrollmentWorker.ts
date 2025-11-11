@@ -38,6 +38,14 @@ async function handleEnrollmentJob(job: Job): Promise<any> {
       throw error;
     }
 
+    // Check for Prisma unique constraint errors (P2002)
+    if (error.code === 'P2002' || error.message?.includes('Unique constraint failed')) {
+      console.log(`[Worker] Prisma unique constraint error - treating as ValidationError`);
+      const validationError = new ValidationError('You are already enrolled in this course');
+      await job.moveToFailed({ message: validationError.message }, true);
+      throw validationError;
+    }
+
     // Other errors (transient) can be retried
     throw error;
   }

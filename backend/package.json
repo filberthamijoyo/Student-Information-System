@@ -14,7 +14,8 @@
     "prisma:seed": "ts-node ../prisma/seed.ts",
     "prisma:studio": "npx prisma studio",
     "db:push": "npx prisma db push",
-    "db:seed": "npx prisma db seed"
+    "db:seed": "npx prisma db seed",
+    "queue:clear": "ts-node src/scripts/clearStuckJobs.ts"
   },
   "prisma": {
     "seed": "ts-node ../prisma/seed.ts"
