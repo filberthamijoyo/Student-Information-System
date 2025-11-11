@@ -1,34 +1,32 @@
 version: '3.8'
 
+# This docker-compose file includes PostgreSQL for LOCAL development
+# Use this if you don't want to use Supabase
+# Run with: docker-compose -f docker-compose.local.yml up -d
+
 services:
-  # ============================================================================
-  # NOTE: PostgreSQL is now hosted on Supabase by default
-  # If you want to use local PostgreSQL, see docker-compose.local.yml
-  # ============================================================================
+  # PostgreSQL Database (Local)
+  postgres:
+    image: postgres:15-alpine
+    container_name: cuhk-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres123
+      POSTGRES_DB: course_selection
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - cuhk-network
 
-  # PostgreSQL Database (COMMENTED OUT - Using Supabase)
-  # Uncomment this section if you want to use local PostgreSQL instead of Supabase
-  # postgres:
-  #   image: postgres:15-alpine
-  #   container_name: cuhk-postgres
-  #   restart: unless-stopped
-  #   environment:
-  #     POSTGRES_USER: postgres
-  #     POSTGRES_PASSWORD: postgres123
-  #     POSTGRES_DB: course_selection
-  #   ports:
-  #     - "5432:5432"
-  #   volumes:
-  #     - postgres_data:/var/lib/postgresql/data
-  #   healthcheck:
-  #     test: ["CMD-SHELL", "pg_isready -U postgres"]
-  #     interval: 5s
-  #     timeout: 5s
-  #     retries: 5
-  #   networks:
-  #     - cuhk-network
-
-  # Redis Cache & Queue (REQUIRED for enrollment queue)
+  # Redis Cache & Queue
   redis:
     image: redis:7-alpine
     container_name: cuhk-redis
@@ -74,21 +72,19 @@ services:
     ports:
       - "5000:5000"
     volumes:
-      # Mount source code for hot reload
       - ./backend/src:/app/src:delegated
       - ./backend/database:/app/database:delegated
-      # Prevent overwriting node_modules
       - backend_node_modules:/app/node_modules
     depends_on:
+      postgres:
+        condition: service_healthy
       redis:
         condition: service_healthy
-      # postgres:  # Commented out - using Supabase
-      #   condition: service_healthy
     networks:
       - cuhk-network
     command: npm run dev
 
-  # Enrollment Worker (Background Job Processor)
+  # Enrollment Worker
   worker:
     build:
       context: ./backend
@@ -117,12 +113,12 @@ services:
       - ./backend/database:/app/database:delegated
       - backend_node_modules:/app/node_modules
     depends_on:
+      postgres:
+        condition: service_healthy
       redis:
         condition: service_healthy
       backend:
         condition: service_started
-      # postgres:  # Commented out - using Supabase
-      #   condition: service_healthy
     networks:
       - cuhk-network
     command: npm run worker

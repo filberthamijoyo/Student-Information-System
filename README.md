@@ -35,7 +35,7 @@ Handle 1000+ students trying to enroll in the same course simultaneously **witho
 ### Backend
 - **Runtime:** Node.js 20+ with TypeScript
 - **Framework:** Express.js
-- **Database:** PostgreSQL with Prisma ORM
+- **Database:** Supabase (PostgreSQL) with Prisma ORM
 - **Cache + Queue:** Redis + Bull
 - **Authentication:** JWT + Bcrypt
 
@@ -58,10 +58,23 @@ Handle 1000+ students trying to enroll in the same course simultaneously **witho
 
 ### Prerequisites
 - Node.js 20+
-- PostgreSQL 14+
-- Redis 7+
+- **Supabase Account** (free tier: https://supabase.com)
+- Docker (for Redis) OR Redis installed locally
 
-### 1. Backend Setup
+### 1. Database Setup (Supabase)
+
+**Option A: Supabase (Recommended)**
+1. Create a Supabase project at https://supabase.com
+2. Get your connection strings from Settings → Database
+3. See [SUPABASE_SETUP.md](./SUPABASE_SETUP.md) for detailed instructions
+
+**Option B: Local PostgreSQL**
+```bash
+# Use docker-compose with PostgreSQL included
+docker-compose -f docker-compose.local.yml up -d postgres
+```
+
+### 2. Backend Setup
 
 ```bash
 cd backend
@@ -71,12 +84,14 @@ npm install
 
 # Configure environment
 cp .env.example .env
-# Edit .env with your database and Redis credentials
+# Edit .env with your Supabase connection strings:
+# DATABASE_URL=postgres://postgres.xxx:[PASSWORD]@...pooler.supabase.com:6543/postgres?pgbouncer=true
+# DIRECT_URL=postgresql://postgres:[PASSWORD]@db.xxx.supabase.co:5432/postgres
 
 # Generate Prisma Client
 npx prisma generate
 
-# Push schema and seed data
+# Push schema and seed data to Supabase
 npx prisma db push
 npx prisma db seed
 
@@ -89,7 +104,22 @@ npm run worker
 
 Backend runs on: `http://localhost:5000`
 
-### 2. Frontend Setup
+### 3. Redis Setup (Required for Queue)
+
+**Option A: Docker (Recommended)**
+```bash
+# Start Redis only (PostgreSQL is on Supabase)
+docker-compose up -d redis
+```
+
+**Option B: Local Redis**
+```bash
+# Install and start Redis on your machine
+# macOS: brew install redis && brew services start redis
+# Ubuntu: sudo apt install redis-server && sudo systemctl start redis
+```
+
+### 4. Frontend Setup
 
 ```bash
 cd frontend
@@ -253,26 +283,72 @@ GET    /api/enrollments/waitlist/:courseId
 
 ## 🏁 Production Deployment
 
-### Environment Variables
+### Database: Supabase (Already Set Up!)
+✅ **No additional database deployment needed** - Supabase is production-ready
+- Automatic daily backups
+- Built-in connection pooling
+- SSL encryption by default
+- Free tier: 500MB database, perfect for this project
 
-**Backend**
+### Redis Hosting Options
+- **Upstash** (recommended): Free tier with 10K commands/day
+- **Redis Cloud**: 30MB free tier
+- **Railway**: Simple deployment with Redis addon
+
+### Backend Deployment Options
+
+**Option 1: Railway**
+```bash
+# Install Railway CLI
+npm install -g @railway/cli
+
+# Login and deploy
+railway login
+railway init
+railway up
+```
+
+**Option 2: Render**
+1. Connect your GitHub repo
+2. Set environment variables in dashboard
+3. Deploy automatically on push
+
+**Environment Variables for Production**
 ```env
-DATABASE_URL=postgresql://user:pass@host:5432/db
-REDIS_URL=redis://host:6379
-JWT_SECRET=your-secret-key
+DATABASE_URL=<Your Supabase pooled connection string>
+DIRECT_URL=<Your Supabase direct connection string>
+REDIS_URL=<Your Redis hosting URL>
+JWT_SECRET=<Strong random secret>
 NODE_ENV=production
+CORS_ORIGIN=<Your frontend URL>
 ```
 
-**Frontend**
+### Frontend Deployment
+
+**Option 1: Vercel (Recommended)**
+```bash
+npm install -g vercel
+cd frontend
+vercel
+```
+
+**Option 2: Netlify**
+```bash
+cd frontend
+npm run build
+# Drag and drop the dist/ folder to Netlify
+```
+
+**Environment Variables**
 ```env
-VITE_API_URL=https://api.example.com/api
+VITE_API_URL=https://your-backend.railway.app/api
 ```
 
-### Recommended Services
-- **Database**: Supabase, Railway, AWS RDS
-- **Redis**: Upstash, Redis Cloud
-- **Backend**: Railway, Render, AWS
-- **Frontend**: Vercel, Netlify
+### Recommended Stack
+- **Database**: ✅ Supabase (already configured)
+- **Redis**: Upstash or Redis Cloud
+- **Backend**: Railway or Render
+- **Frontend**: Vercel or Netlify
 
 ---
 
