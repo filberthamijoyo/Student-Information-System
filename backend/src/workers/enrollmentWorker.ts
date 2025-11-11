@@ -1,6 +1,7 @@
 import { Job } from 'bull';
 import { enrollmentQueue } from '../config/queue';
 import { processEnrollment } from '../services/enrollmentService';
+import { ValidationError } from '../utils/errors';
 
 /**
  * Enrollment Worker (Prisma-based)
@@ -28,7 +29,17 @@ async function handleEnrollmentJob(job: Job): Promise<any> {
     return result;
   } catch (error: any) {
     console.error(`[Worker] ✗ Job ${job.id} failed:`, error.message);
-    throw error; // Will trigger retry based on job configuration
+
+    // Validation errors should not be retried - fail immediately
+    if (error instanceof ValidationError) {
+      console.log(`[Worker] ValidationError detected - failing job immediately without retry`);
+      // Move job to failed state by setting attemptsMade to max
+      await job.moveToFailed({ message: error.message }, true);
+      throw error;
+    }
+
+    // Other errors (transient) can be retried
+    throw error;
   }
 }
 

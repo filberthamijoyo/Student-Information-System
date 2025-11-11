@@ -1,6 +1,7 @@
 import { prisma } from '../config/prisma';
 import { enrollmentQueue } from '../config/queue';
 import { EnrollmentStatus, Prisma } from '@prisma/client';
+import { ValidationError } from '../utils/errors';
 
 /**
  * Enrollment Service with Concurrency Control
@@ -30,13 +31,13 @@ export async function queueEnrollment(userId: number, courseId: number) {
 
   if (existingEnrollment) {
     if (existingEnrollment.status === EnrollmentStatus.CONFIRMED) {
-      throw new Error('You are already enrolled in this course');
+      throw new ValidationError('You are already enrolled in this course');
     }
     if (existingEnrollment.status === EnrollmentStatus.PENDING) {
-      throw new Error('You already have a pending enrollment request for this course');
+      throw new ValidationError('You already have a pending enrollment request for this course');
     }
     if (existingEnrollment.status === EnrollmentStatus.WAITLISTED) {
-      throw new Error('You are already on the waitlist for this course');
+      throw new ValidationError('You are already on the waitlist for this course');
     }
   }
 
@@ -47,11 +48,11 @@ export async function queueEnrollment(userId: number, courseId: number) {
   });
 
   if (!course) {
-    throw new Error('Course not found');
+    throw new ValidationError('Course not found');
   }
 
   if (course.status === 'INACTIVE') {
-    throw new Error('This course is not available for enrollment');
+    throw new ValidationError('This course is not available for enrollment');
   }
 
   // Add to queue
@@ -99,11 +100,11 @@ export async function processEnrollment(userId: number, courseId: number) {
     });
 
     if (!course) {
-      throw new Error('Course not found');
+      throw new ValidationError('Course not found');
     }
 
     if (course.status === 'INACTIVE') {
-      throw new Error('Course is inactive');
+      throw new ValidationError('Course is inactive');
     }
 
     // 2. Fetch user
@@ -112,7 +113,7 @@ export async function processEnrollment(userId: number, courseId: number) {
     });
 
     if (!user) {
-      throw new Error('User not found');
+      throw new ValidationError('User not found');
     }
 
     // 3. Check prerequisites
@@ -144,7 +145,7 @@ export async function processEnrollment(userId: number, courseId: number) {
       );
 
       if (missingPrereqs.length > 0) {
-        throw new Error(`Missing prerequisites: ${missingPrereqs.join(', ')}`);
+        throw new ValidationError(`Missing prerequisites: ${missingPrereqs.join(', ')}`);
       }
     }
 
@@ -182,7 +183,7 @@ export async function processEnrollment(userId: number, courseId: number) {
         reason: 'Time conflict detected'
       });
 
-      throw new Error('Time conflict detected with your existing courses');
+      throw new ValidationError('Time conflict detected with your existing courses');
     }
 
     // 5. Check credit limit (optional business rule)
@@ -212,7 +213,7 @@ export async function processEnrollment(userId: number, courseId: number) {
     const maxCredits = parseInt(process.env.MAX_CREDITS_PER_SEMESTER || '18');
 
     if (currentCredits + course.credits > maxCredits) {
-      throw new Error(`Enrollment would exceed maximum credits (${maxCredits}) for this semester`);
+      throw new ValidationError(`Enrollment would exceed maximum credits (${maxCredits}) for this semester`);
     }
 
     // 6. Check capacity with optimistic locking
