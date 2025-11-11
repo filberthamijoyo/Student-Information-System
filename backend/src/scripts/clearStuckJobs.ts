@@ -1,5 +1,4 @@
 import { enrollmentQueue } from '../config/queue';
-import Redis from 'ioredis';
 
 /**
  * Utility script to clear stuck jobs from the enrollment queue
