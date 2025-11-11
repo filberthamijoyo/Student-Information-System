@@ -1,8 +1,17 @@
 {
+  "name": "cuhk-course-selection",
+  "version": "1.0.0",
+  "prisma": {
+    "seed": "ts-node prisma/seed.ts"
+  },
   "devDependencies": {
-    "prisma": "^6.19.0"
+    "@types/bcrypt": "^6.0.0",
+    "@types/node": "^24.10.0",
+    "prisma": "^6.19.0",
+    "ts-node": "^10.9.2"
   },
   "dependencies": {
-    "@prisma/client": "^6.19.0"
+    "@prisma/client": "^6.19.0",
+    "bcrypt": "^6.0.0"
   }
 }

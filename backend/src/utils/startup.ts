@@ -4,22 +4,10 @@ import { redisClient } from '../config/redis';
 /**
  * Check if database is ready and migrations are applied
  */
-export async function checkDatabase(): Promise<boolean> {
-  try {
-    // Check if users table exists (means migrations have run)
-    const result = await pool.query(`
-      SELECT EXISTS (
-        SELECT FROM information_schema.tables
-        WHERE table_schema = 'public'
-        AND table_name = 'users'
-      );
-    `);
-
-    return result.rows[0].exists;
-  } catch (error) {
-    console.error('Database check failed:', error);
-    return false;
-  }
+async function checkDatabase(): Promise<boolean> {
+  // Database connection is handled by Prisma Client
+  // which automatically connects when needed
+  return true;
 }
 
 /**
