@@ -3,8 +3,7 @@ import {
   enrollInCourse,
   dropCourse,
   getMyEnrollments,
-  getEnrollmentHistory,
-  checkEnrollmentEligibility,
+  getEnrollmentStatus,
 } from '../controllers/enrollmentController';
 import { authenticate, requireStudent } from '../middleware/auth';
 import { enrollmentLimiter } from '../middleware/rateLimiter';
@@ -23,11 +22,18 @@ router.use(authenticate);
 router.post('/', requireStudent, enrollmentLimiter, asyncHandler(enrollInCourse));
 
 /**
- * @route   DELETE /api/enrollments/:courseId
+ * @route   GET /api/enrollments/status/:jobId
+ * @desc    Get enrollment job status
+ * @access  Private
+ */
+router.get('/status/:jobId', asyncHandler(getEnrollmentStatus));
+
+/**
+ * @route   DELETE /api/enrollments/:enrollmentId
  * @desc    Drop a course
  * @access  Private (Student)
  */
-router.delete('/:courseId', requireStudent, asyncHandler(dropCourse));
+router.delete('/:enrollmentId', requireStudent, asyncHandler(dropCourse));
 
 /**
  * @route   GET /api/enrollments/my-courses
@@ -35,19 +41,5 @@ router.delete('/:courseId', requireStudent, asyncHandler(dropCourse));
  * @access  Private (Student)
  */
 router.get('/my-courses', requireStudent, asyncHandler(getMyEnrollments));
-
-/**
- * @route   GET /api/enrollments/history
- * @desc    Get student's enrollment history
- * @access  Private (Student)
- */
-router.get('/history', requireStudent, asyncHandler(getEnrollmentHistory));
-
-/**
- * @route   POST /api/enrollments/check-eligibility
- * @desc    Check if student is eligible to enroll in a course
- * @access  Private (Student)
- */
-router.post('/check-eligibility', requireStudent, asyncHandler(checkEnrollmentEligibility));
 
 export default router;
