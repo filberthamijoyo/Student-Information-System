@@ -40,11 +40,11 @@ export async function enrollInCourse(req: AuthRequest, res: Response) {
 
 /**
  * Drop a course
- * DELETE /api/enrollments/:id
+ * DELETE /api/enrollments/:enrollmentId
  */
 export async function dropCourse(req: AuthRequest, res: Response) {
   try {
-    const enrollmentId = parseInt(req.params.id);
+    const enrollmentId = parseInt(req.params.enrollmentId);
     const userId = (req as any).userId || (req as any).user?.userId;
 
     if (!userId) {
@@ -86,19 +86,9 @@ export async function getMyEnrollments(req: AuthRequest, res: Response) {
 
     const enrollments = await enrollmentService.getUserEnrollments(userId);
 
-    // Calculate totals
-    const confirmed = enrollments.filter((e: any) => e.status === 'CONFIRMED');
-    const totalCredits = confirmed.reduce((sum: number, e: any) => sum + e.course.credits, 0);
-
     res.status(200).json({
       success: true,
-      data: {
-        enrollments,
-        total_enrolled: confirmed.length,
-        total_waitlisted: enrollments.filter((e: any) => e.status === 'WAITLISTED').length,
-        total_pending: enrollments.filter((e: any) => e.status === 'PENDING').length,
-        total_credits: totalCredits
-      }
+      data: enrollments
     });
   } catch (error: any) {
     res.status(500).json({
