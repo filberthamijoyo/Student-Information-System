@@ -114,7 +114,7 @@ app.use(errorHandler);
 const startServer = async () => {
   try {
     // Wait for database and redis to be ready (important for Docker)
-    await waitForServices();
+    // await waitForServices();
 
     // Display service status
     await displayServiceStatus();
