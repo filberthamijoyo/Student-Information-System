@@ -29,9 +29,22 @@ model User {
   updatedAt      DateTime     @updatedAt @map("updated_at")
 
   // Relations
-  enrollments    Enrollment[]
-  taughtCourses  Course[]     @relation("InstructorCourses")
-  auditLogs      AuditLog[]
+  enrollments            Enrollment[]
+  taughtCourses          Course[]            @relation("InstructorCourses")
+  auditLogs              AuditLog[]
+  student                Student?
+  faculty                Faculty?
+  personalInfo           PersonalInfo?
+  financialAccount       FinancialAccount?
+  transcripts            Transcript[]
+  gradesSubmitted        Grade[]             @relation("GradesSubmitted")
+  gradesApproved         Grade[]             @relation("GradesApproved")
+  applications           Application[]       @relation("UserApplications")
+  reviewedApplications   Application[]       @relation("ReviewedApplications")
+  advisees               Student[]           @relation("StudentAdvisor")
+  announcements          Announcement[]
+  uploadedMaterials      CourseMaterial[]
+  attendanceMarked       Attendance[]
 
   @@map("users")
   @@index([email])
@@ -68,9 +81,10 @@ model Course {
   updatedAt         DateTime      @updatedAt @map("updated_at")
 
   // Relations
-  instructor        User?         @relation("InstructorCourses", fields: [instructorId], references: [id])
+  instructor        User?            @relation("InstructorCourses", fields: [instructorId], references: [id])
   timeSlots         TimeSlot[]
   enrollments       Enrollment[]
+  materials         CourseMaterial[]
 
   @@map("courses")
   @@index([courseCode])
@@ -132,13 +146,14 @@ model Enrollment {
   courseId         Int              @map("course_id")
   status           EnrollmentStatus @default(PENDING)
   waitlistPosition Int?             @map("waitlist_position")
-  grade            String?
   enrolledAt       DateTime         @default(now()) @map("enrolled_at")
   updatedAt        DateTime         @updatedAt @map("updated_at")
 
   // Relations
   user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   course           Course           @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  grade            Grade?
+  attendance       Attendance[]
 
   @@unique([userId, courseId])
   @@map("enrollments")
@@ -153,6 +168,446 @@ enum EnrollmentStatus {
   WAITLISTED
   DROPPED
   REJECTED
+}
+
+// ============================================================================
+// ACADEMIC RECORDS & GRADES
+// ============================================================================
+
+model Grade {
+  id              Int          @id @default(autoincrement())
+  enrollmentId    Int          @unique @map("enrollment_id")
+  letterGrade     String?      @map("letter_grade") // A+, A, A-, B+, etc.
+  numericGrade    Float?       @map("numeric_grade") // 0-100
+  gradePoints     Float?       @map("grade_points") // 4.0 scale
+  status          GradeStatus  @default(IN_PROGRESS)
+  submittedBy     Int?         @map("submitted_by")
+  submittedAt     DateTime?    @map("submitted_at")
+  approvedBy      Int?         @map("approved_by")
+  approvedAt      DateTime?    @map("approved_at")
+  comments        String?      @db.Text
+
+  enrollment      Enrollment   @relation(fields: [enrollmentId], references: [id])
+  instructor      User?        @relation("GradesSubmitted", fields: [submittedBy], references: [id])
+  approver        User?        @relation("GradesApproved", fields: [approvedBy], references: [id])
+
+  @@map("grades")
+  @@index([enrollmentId])
+}
+
+enum GradeStatus {
+  IN_PROGRESS
+  SUBMITTED
+  APPROVED
+  PUBLISHED
+}
+
+model Transcript {
+  id              Int          @id @default(autoincrement())
+  userId          Int          @map("user_id")
+  semester        Semester
+  year            Int
+  gpa             Float
+  termGPA         Float        @map("term_gpa")
+  totalCredits    Float        @map("total_credits")
+  earnedCredits   Float        @map("earned_credits")
+  qualityPoints   Float        @map("quality_points")
+  academicStanding String      @map("academic_standing") // Good Standing, Probation, etc.
+  generatedAt     DateTime     @default(now()) @map("generated_at")
+
+  user            User         @relation(fields: [userId], references: [id])
+
+  @@unique([userId, semester, year])
+  @@map("transcripts")
+  @@index([userId])
+}
+
+// ============================================================================
+// DEGREE REQUIREMENTS & PLANNING
+// ============================================================================
+
+model Major {
+  id              Int          @id @default(autoincrement())
+  code            String       @unique
+  name            String
+  department      String
+  degree          DegreeType   // BS, BA, MS, etc.
+  totalCredits    Int          @map("total_credits")
+  description     String?      @db.Text
+
+  students        Student[]
+  requirements    Requirement[]
+
+  @@map("majors")
+}
+
+enum DegreeType {
+  BS
+  BA
+  MS
+  MA
+  PHD
+}
+
+model Requirement {
+  id              Int          @id @default(autoincrement())
+  majorId         Int          @map("major_id")
+  category        String       // Core, Elective, General Ed, etc.
+  name            String
+  credits         Int
+  courses         Json         // Array of acceptable course codes
+  description     String?      @db.Text
+
+  major           Major        @relation(fields: [majorId], references: [id])
+
+  @@map("requirements")
+  @@index([majorId])
+}
+
+model Student {
+  id              Int          @id @default(autoincrement())
+  userId          Int          @unique @map("user_id")
+  studentId       String       @unique @map("student_id")
+  majorId         Int?         @map("major_id")
+  minorId         Int?         @map("minor_id")
+  advisorId       Int?         @map("advisor_id")
+  year            Int          // 1, 2, 3, 4
+  expectedGrad    DateTime?    @map("expected_grad")
+  admissionDate   DateTime     @map("admission_date")
+  status          StudentStatus @default(ACTIVE)
+
+  user            User         @relation(fields: [userId], references: [id])
+  major           Major?       @relation(fields: [majorId], references: [id])
+  advisor         User?        @relation("StudentAdvisor", fields: [advisorId], references: [id])
+
+  @@map("students")
+  @@index([userId])
+  @@index([studentId])
+}
+
+enum StudentStatus {
+  ACTIVE
+  LEAVE_OF_ABSENCE
+  WITHDRAWN
+  SUSPENDED
+  GRADUATED
+}
+
+// ============================================================================
+// FINANCIAL INFORMATION
+// ============================================================================
+
+model FinancialAccount {
+  id              Int          @id @default(autoincrement())
+  userId          Int          @unique @map("user_id")
+  balance         Float        @default(0)
+  tuitionDue      Float        @default(0) @map("tuition_due")
+  housingDue      Float        @default(0) @map("housing_due")
+  otherDue        Float        @default(0) @map("other_due")
+  lastUpdated     DateTime     @updatedAt @map("last_updated")
+
+  user            User         @relation(fields: [userId], references: [id])
+  charges         Charge[]
+  payments        Payment[]
+
+  @@map("financial_accounts")
+}
+
+model Charge {
+  id              Int              @id @default(autoincrement())
+  accountId       Int              @map("account_id")
+  semester        Semester?
+  year            Int?
+  type            ChargeType
+  description     String
+  amount          Float
+  dueDate         DateTime         @map("due_date")
+  isPaid          Boolean          @default(false) @map("is_paid")
+  createdAt       DateTime         @default(now()) @map("created_at")
+
+  account         FinancialAccount @relation(fields: [accountId], references: [id])
+
+  @@map("charges")
+  @@index([accountId])
+}
+
+enum ChargeType {
+  TUITION
+  HOUSING
+  MEAL_PLAN
+  ACTIVITY_FEE
+  TECHNOLOGY_FEE
+  LIBRARY_FEE
+  OTHER
+}
+
+model Payment {
+  id              Int              @id @default(autoincrement())
+  accountId       Int              @map("account_id")
+  amount          Float
+  method          PaymentMethod
+  referenceNumber String           @map("reference_number")
+  status          PaymentStatus    @default(PENDING)
+  processedAt     DateTime?        @map("processed_at")
+  createdAt       DateTime         @default(now()) @map("created_at")
+
+  account         FinancialAccount @relation(fields: [accountId], references: [id])
+
+  @@map("payments")
+  @@index([accountId])
+}
+
+enum PaymentMethod {
+  BANK_TRANSFER
+  CREDIT_CARD
+  WECHAT_PAY
+  ALIPAY
+  CASH
+  CHECK
+}
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+// ============================================================================
+// ACADEMIC APPLICATIONS & PETITIONS
+// ============================================================================
+
+model Application {
+  id              Int              @id @default(autoincrement())
+  userId          Int              @map("user_id")
+  type            ApplicationType
+  semester        Semester?
+  year            Int?
+  status          ApplicationStatus @default(PENDING)
+  requestedDate   DateTime         @default(now()) @map("requested_date")
+  reason          String           @db.Text
+  supportingDocs  Json?            @map("supporting_docs") // Array of file URLs
+  reviewedBy      Int?             @map("reviewed_by")
+  reviewedAt      DateTime?        @map("reviewed_at")
+  reviewNotes     String?          @db.Text @map("review_notes")
+  decision        String?
+
+  user            User             @relation("UserApplications", fields: [userId], references: [id])
+  reviewer        User?            @relation("ReviewedApplications", fields: [reviewedBy], references: [id])
+
+  @@map("applications")
+  @@index([userId])
+  @@index([status])
+}
+
+enum ApplicationType {
+  LEAVE_OF_ABSENCE
+  WITHDRAWAL
+  MAJOR_CHANGE
+  MINOR_DECLARATION
+  CREDIT_TRANSFER
+  OVERLOAD_REQUEST
+  GRADE_APPEAL
+  READMISSION
+  GRADUATION_APPLICATION
+}
+
+enum ApplicationStatus {
+  PENDING
+  UNDER_REVIEW
+  APPROVED
+  DENIED
+  WITHDRAWN
+}
+
+// ============================================================================
+// PERSONAL INFORMATION
+// ============================================================================
+
+model PersonalInfo {
+  id              Int          @id @default(autoincrement())
+  userId          Int          @unique @map("user_id")
+
+  // Contact Information
+  phoneNumber     String?      @map("phone_number")
+  alternatePhone  String?      @map("alternate_phone")
+  permanentAddress String?     @db.Text @map("permanent_address")
+  mailingAddress  String?      @db.Text @map("mailing_address")
+  city            String?
+  state           String?
+  postalCode      String?      @map("postal_code")
+  country         String?      @default("China")
+
+  // Emergency Contact
+  emergencyName   String?      @map("emergency_name")
+  emergencyRelation String?    @map("emergency_relation")
+  emergencyPhone  String?      @map("emergency_phone")
+  emergencyEmail  String?      @map("emergency_email")
+
+  // Personal Details
+  dateOfBirth     DateTime?    @map("date_of_birth")
+  gender          String?
+  nationality     String?
+  idNumber        String?      @map("id_number") // National ID or passport
+
+  // Academic Background
+  highSchool      String?      @map("high_school")
+  highSchoolGrad  DateTime?    @map("high_school_grad")
+
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+
+  user            User         @relation(fields: [userId], references: [id])
+
+  @@map("personal_info")
+}
+
+// ============================================================================
+// INSTRUCTOR/FACULTY DATA
+// ============================================================================
+
+model Faculty {
+  id              Int          @id @default(autoincrement())
+  userId          Int          @unique @map("user_id")
+  employeeId      String       @unique @map("employee_id")
+  title           String       // Professor, Associate Professor, etc.
+  department      String
+  office          String?
+  officeHours     Json?        @map("office_hours") // Array of time slots
+  researchAreas   Json?        @map("research_areas") // Array of research interests
+  bio             String?      @db.Text
+  cvUrl           String?      @map("cv_url")
+
+  user            User         @relation(fields: [userId], references: [id])
+
+  @@map("faculty")
+  @@index([userId])
+}
+
+model Attendance {
+  id              Int              @id @default(autoincrement())
+  enrollmentId    Int              @map("enrollment_id")
+  date            DateTime
+  status          AttendanceStatus
+  notes           String?
+  markedBy        Int              @map("marked_by")
+
+  enrollment      Enrollment       @relation(fields: [enrollmentId], references: [id])
+  instructor      User             @relation(fields: [markedBy], references: [id])
+
+  @@unique([enrollmentId, date])
+  @@map("attendance")
+  @@index([enrollmentId])
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  EXCUSED
+}
+
+// ============================================================================
+// CAMPUS INFORMATION & RESOURCES
+// ============================================================================
+
+model Announcement {
+  id              Int              @id @default(autoincrement())
+  title           String
+  content         String           @db.Text
+  type            AnnouncementType
+  priority        Priority         @default(NORMAL)
+  targetAudience  Json             @map("target_audience") // Array of roles: ["STUDENT", "FACULTY", "ALL"]
+  publishDate     DateTime         @default(now()) @map("publish_date")
+  expiryDate      DateTime?        @map("expiry_date")
+  isActive        Boolean          @default(true) @map("is_active")
+  createdBy       Int              @map("created_by")
+  attachments     Json?
+
+  author          User             @relation(fields: [createdBy], references: [id])
+
+  @@map("announcements")
+  @@index([isActive, publishDate])
+}
+
+enum AnnouncementType {
+  ACADEMIC
+  ADMINISTRATIVE
+  EVENT
+  EMERGENCY
+  GENERAL
+}
+
+enum Priority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+model Event {
+  id              Int          @id @default(autoincrement())
+  title           String
+  description     String       @db.Text
+  location        String
+  startTime       DateTime     @map("start_time")
+  endTime         DateTime     @map("end_time")
+  category        EventCategory
+  organizer       String
+  registrationUrl String?      @map("registration_url")
+  capacity        Int?
+  registered      Int          @default(0)
+  isPublic        Boolean      @default(true) @map("is_public")
+  createdAt       DateTime     @default(now()) @map("created_at")
+
+  @@map("events")
+  @@index([startTime])
+  @@index([category])
+}
+
+enum EventCategory {
+  ACADEMIC
+  CULTURAL
+  SPORTS
+  WORKSHOP
+  SOCIAL
+  CAREER
+  OTHER
+}
+
+// ============================================================================
+// COURSE MATERIALS & RESOURCES
+// ============================================================================
+
+model CourseMaterial {
+  id              Int          @id @default(autoincrement())
+  courseId        Int          @map("course_id")
+  title           String
+  description     String?      @db.Text
+  type            MaterialType // Syllabus, Lecture Notes, Assignment, etc.
+  fileUrl         String       @map("file_url")
+  fileName        String       @map("file_name")
+  fileSize        Int?         @map("file_size")
+  uploadedBy      Int          @map("uploaded_by")
+  uploadedAt      DateTime     @default(now()) @map("uploaded_at")
+  isVisible       Boolean      @default(true) @map("is_visible")
+
+  course          Course       @relation(fields: [courseId], references: [id])
+  uploader        User         @relation(fields: [uploadedBy], references: [id])
+
+  @@map("course_materials")
+  @@index([courseId])
+}
+
+enum MaterialType {
+  SYLLABUS
+  LECTURE_NOTES
+  ASSIGNMENT
+  READING
+  EXAM
+  SOLUTION
+  RECORDING
+  OTHER
 }
 
 // ============================================================================
