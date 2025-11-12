@@ -7,6 +7,20 @@ import { Dashboard } from './pages/Dashboard';
 import { CourseList } from './pages/CourseList';
 import { MyEnrollments } from './pages/MyEnrollments';
 
+// New Student Pages
+import { StudentDashboard } from './pages/StudentDashboard';
+import { MyGrades } from './pages/MyGrades';
+import { FinancialInfo } from './pages/FinancialInfo';
+import { PersonalInfo } from './pages/PersonalInfo';
+import { DegreePlanning } from './pages/DegreePlanning';
+import { Applications } from './pages/Applications';
+import { CampusInfo } from './pages/CampusInfo';
+import { Transcript } from './pages/Transcript';
+
+// Faculty Pages
+import { FacultyDashboard } from './pages/FacultyDashboard';
+import { GradeSubmission } from './pages/GradeSubmission';
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -34,6 +48,20 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function RoleDashboard() {
+  const { user } = useAuth();
+
+  if (user?.role === 'INSTRUCTOR') {
+    return <FacultyDashboard />;
+  }
+
+  if (user?.role === 'ADMIN') {
+    return <Dashboard />; // Admin uses the existing Dashboard
+  }
+
+  return <StudentDashboard />;
+}
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
@@ -41,16 +69,20 @@ function App() {
         <BrowserRouter>
           <Routes>
             <Route path="/login" element={<Login />} />
+
+            {/* Dashboard - Role-based */}
             <Route
               path="/"
               element={
                 <ProtectedRoute>
                   <Layout>
-                    <Dashboard />
+                    <RoleDashboard />
                   </Layout>
                 </ProtectedRoute>
               }
             />
+
+            {/* Course Management */}
             <Route
               path="/courses"
               element={
@@ -71,6 +103,123 @@ function App() {
                 </ProtectedRoute>
               }
             />
+
+            {/* Academic Pages */}
+            <Route
+              path="/academic/grades"
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <MyGrades />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/academic/transcript"
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <Transcript />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+
+            {/* Financial */}
+            <Route
+              path="/financial"
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <FinancialInfo />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+
+            {/* Personal Info */}
+            <Route
+              path="/personal"
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <PersonalInfo />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+
+            {/* Degree Planning */}
+            <Route
+              path="/planning"
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <DegreePlanning />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+
+            {/* Applications */}
+            <Route
+              path="/applications"
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <Applications />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+
+            {/* Campus Info */}
+            <Route
+              path="/campus"
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <CampusInfo />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+
+            {/* Faculty Routes */}
+            <Route
+              path="/faculty"
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <FacultyDashboard />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/faculty/courses"
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <FacultyDashboard />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/faculty/courses/:courseId/grades"
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <GradeSubmission />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+
+            {/* Catch all - redirect to home */}
+            <Route path="*" element={<Navigate to="/" />} />
           </Routes>
         </BrowserRouter>
       </AuthProvider>

@@ -14,6 +14,14 @@ import courseRoutes from './routes/courseRoutes';
 import enrollmentRoutes from './routes/enrollmentRoutes';
 import adminRoutes from './routes/adminRoutes';
 import instructorRoutes from './routes/instructorRoutes';
+// New SIS routes
+import academicRoutes from './routes/academicRoutes';
+import financialRoutes from './routes/financialRoutes';
+import applicationRoutes from './routes/applicationRoutes';
+import personalRoutes from './routes/personalRoutes';
+import planningRoutes from './routes/planningRoutes';
+import facultyRoutes from './routes/facultyRoutes';
+import campusRoutes from './routes/campusRoutes';
 
 // Load environment variables
 dotenv.config();
@@ -77,9 +85,9 @@ app.get('/health', async (req: Request, res: Response) => {
 // API info endpoint
 app.get('/', (req: Request, res: Response) => {
   res.json({
-    name: 'CUHK Course Selection System API',
-    version: '1.0.0',
-    description: 'Backend API for course selection and enrollment management',
+    name: 'CUHK Student Information System API',
+    version: '2.0.0',
+    description: 'Complete Student Information System with course selection, academic records, financial info, and more',
     endpoints: {
       health: '/health',
       auth: '/api/auth',
@@ -87,6 +95,13 @@ app.get('/', (req: Request, res: Response) => {
       enrollments: '/api/enrollments',
       admin: '/api/admin',
       instructor: '/api/instructor',
+      academic: '/api/academic',
+      financial: '/api/financial',
+      applications: '/api/applications',
+      personal: '/api/personal',
+      planning: '/api/planning',
+      faculty: '/api/faculty',
+      campus: '/api/campus',
     },
   });
 });
@@ -97,6 +112,15 @@ app.use('/api/courses', courseRoutes);
 app.use('/api/enrollments', enrollmentRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/instructor', instructorRoutes);
+
+// New SIS API Routes
+app.use('/api/academic', academicRoutes);
+app.use('/api/financial', financialRoutes);
+app.use('/api/applications', applicationRoutes);
+app.use('/api/personal', personalRoutes);
+app.use('/api/planning', planningRoutes);
+app.use('/api/faculty', facultyRoutes);
+app.use('/api/campus', campusRoutes);
 
 /**
  * Error Handling Middleware
