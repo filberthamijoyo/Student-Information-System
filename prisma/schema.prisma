@@ -32,6 +32,7 @@ model User {
   enrollments    Enrollment[]
   taughtCourses  Course[]     @relation("InstructorCourses")
   auditLogs      AuditLog[]
+  shoppingCart   ShoppingCart[]
 
   @@map("users")
   @@index([email])
@@ -63,14 +64,17 @@ model Course {
   year              Int
   status            CourseStatus  @default(ACTIVE)
   instructorId      Int?          @map("instructor_id")
+  termId            Int?          @map("term_id")
   version           Int           @default(0) // For optimistic locking
   createdAt         DateTime      @default(now()) @map("created_at")
   updatedAt         DateTime      @updatedAt @map("updated_at")
 
   // Relations
   instructor        User?         @relation("InstructorCourses", fields: [instructorId], references: [id])
+  term              Term?         @relation(fields: [termId], references: [id])
   timeSlots         TimeSlot[]
   enrollments       Enrollment[]
+  shoppingCarts     ShoppingCart[]
 
   @@map("courses")
   @@index([courseCode])
@@ -78,6 +82,7 @@ model Course {
   @@index([semester, year])
   @@index([status])
   @@index([instructorId])
+  @@index([termId])
 }
 
 enum Semester {
@@ -130,6 +135,7 @@ model Enrollment {
   id               Int              @id @default(autoincrement())
   userId           Int              @map("user_id")
   courseId         Int              @map("course_id")
+  termId           Int?             @map("term_id")
   status           EnrollmentStatus @default(PENDING)
   waitlistPosition Int?             @map("waitlist_position")
   grade            String?
@@ -139,12 +145,14 @@ model Enrollment {
   // Relations
   user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   course           Course           @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  term             Term?            @relation(fields: [termId], references: [id])
 
   @@unique([userId, courseId])
   @@map("enrollments")
   @@index([userId])
   @@index([courseId])
   @@index([status])
+  @@index([termId])
 }
 
 enum EnrollmentStatus {
@@ -153,6 +161,71 @@ enum EnrollmentStatus {
   WAITLISTED
   DROPPED
   REJECTED
+}
+
+// ============================================================================
+// TERM MODEL
+// ============================================================================
+
+model Term {
+  id              Int          @id @default(autoincrement())
+  name            String       // "2024-25 Term 2"
+  code            String       @unique // "2024-25-T2"
+  type            TermType     // FALL, SPRING, SUMMER
+  status          TermStatus   // UPCOMING, ENROLLMENT, ACTIVE, COMPLETED
+  academicYear    String       @map("academic_year") // "2024-25"
+  enrollmentStart DateTime     @map("enrollment_start")
+  enrollmentEnd   DateTime     @map("enrollment_end")
+  termStart       DateTime     @map("term_start")
+  termEnd         DateTime     @map("term_end")
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+
+  // Relations
+  courses         Course[]
+  enrollments     Enrollment[]
+  shoppingCarts   ShoppingCart[]
+
+  @@map("terms")
+  @@index([code])
+  @@index([status])
+  @@index([type])
+}
+
+enum TermType {
+  FALL
+  SPRING
+  SUMMER
+}
+
+enum TermStatus {
+  UPCOMING
+  ENROLLMENT
+  ACTIVE
+  COMPLETED
+}
+
+// ============================================================================
+// SHOPPING CART MODEL
+// ============================================================================
+
+model ShoppingCart {
+  id       Int      @id @default(autoincrement())
+  userId   Int      @map("user_id")
+  courseId Int      @map("course_id")
+  termId   Int      @map("term_id")
+  addedAt  DateTime @default(now()) @map("added_at")
+  notes    String?  @db.Text
+
+  // Relations
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  term   Term   @relation(fields: [termId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, courseId, termId])
+  @@map("shopping_cart")
+  @@index([userId])
+  @@index([termId])
 }
 
 // ============================================================================

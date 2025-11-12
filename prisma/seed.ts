@@ -1,4 +1,4 @@
-import { PrismaClient, Role, Semester } from '@prisma/client';
+import { PrismaClient, Role, Semester, TermType, TermStatus } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
@@ -9,7 +9,60 @@ async function main() {
   // Hash password for demo users
   const hashedPassword = await bcrypt.hash('Password123!', 10);
 
-  // 1. Create demo users
+  // 1. Create terms
+  console.log('Creating academic terms...');
+
+  const fallTerm = await prisma.term.upsert({
+    where: { code: '2024-25-T1' },
+    update: {},
+    create: {
+      name: '2024-25 Term 1',
+      code: '2024-25-T1',
+      type: TermType.FALL,
+      status: TermStatus.ENROLLMENT,
+      academicYear: '2024-25',
+      enrollmentStart: new Date('2024-08-15'),
+      enrollmentEnd: new Date('2024-09-15'),
+      termStart: new Date('2024-09-01'),
+      termEnd: new Date('2024-12-20'),
+    },
+  });
+
+  const springTerm = await prisma.term.upsert({
+    where: { code: '2024-25-T2' },
+    update: {},
+    create: {
+      name: '2024-25 Term 2',
+      code: '2024-25-T2',
+      type: TermType.SPRING,
+      status: TermStatus.UPCOMING,
+      academicYear: '2024-25',
+      enrollmentStart: new Date('2024-12-01'),
+      enrollmentEnd: new Date('2025-01-10'),
+      termStart: new Date('2025-01-15'),
+      termEnd: new Date('2025-05-15'),
+    },
+  });
+
+  const summerTerm = await prisma.term.upsert({
+    where: { code: '2024-25-SUMMER' },
+    update: {},
+    create: {
+      name: '2024-25 Summer',
+      code: '2024-25-SUMMER',
+      type: TermType.SUMMER,
+      status: TermStatus.UPCOMING,
+      academicYear: '2024-25',
+      enrollmentStart: new Date('2025-04-01'),
+      enrollmentEnd: new Date('2025-05-15'),
+      termStart: new Date('2025-06-01'),
+      termEnd: new Date('2025-08-15'),
+    },
+  });
+
+  console.log('✅ Created 3 academic terms');
+
+  // 2. Create demo users
   console.log('Creating demo users...');
   
   const student = await prisma.user.upsert({
@@ -52,7 +105,7 @@ async function main() {
 
   console.log('✅ Created 3 demo users');
 
-  // 2. Create courses
+  // 3. Create courses
   console.log('Creating courses...');
 
   const course1 = await prisma.course.create({
@@ -63,6 +116,7 @@ async function main() {
       credits: 3,
       maxCapacity: 80,
       instructorId: instructor.id,
+      termId: fallTerm.id,
       description: 'Introduction to database systems',
       semester: Semester.FALL,
       year: 2025,  // Added year field
@@ -93,6 +147,7 @@ async function main() {
       credits: 3,
       maxCapacity: 60,
       instructorId: instructor.id,
+      termId: fallTerm.id,
       description: 'Introduction to machine learning',
       prerequisites: 'CSC1001,STA2001',
       semester: Semester.FALL,
@@ -124,6 +179,7 @@ async function main() {
       credits: 3,
       maxCapacity: 120,
       instructorId: instructor.id,
+      termId: fallTerm.id,
       description: 'Introduction to programming',
       semester: Semester.FALL,
       year: 2025,  // Added year field
