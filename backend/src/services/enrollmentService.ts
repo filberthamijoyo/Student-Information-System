@@ -136,6 +136,12 @@ export async function processEnrollment(userId: number, courseId: number) {
       if (existingEnrollment.status === EnrollmentStatus.WAITLISTED) {
         throw new ValidationError('You are already on the waitlist for this course');
       }
+      if (existingEnrollment.status === EnrollmentStatus.REJECTED) {
+        // Delete rejected enrollment so we can try again
+        await tx.enrollment.delete({
+          where: { id: existingEnrollment.id }
+        });
+      }
     }
 
     // 3. Check prerequisites

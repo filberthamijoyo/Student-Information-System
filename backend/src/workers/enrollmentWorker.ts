@@ -33,8 +33,8 @@ async function handleEnrollmentJob(job: Job): Promise<any> {
     // Validation errors should not be retried - fail immediately
     if (error instanceof ValidationError) {
       console.log(`[Worker] ValidationError detected - failing job immediately without retry`);
-      // Move job to failed state by setting attemptsMade to max
-      await job.moveToFailed({ message: error.message }, true);
+      // Discard the job to prevent retries
+      await job.discard();
       throw error;
     }
 
@@ -42,7 +42,8 @@ async function handleEnrollmentJob(job: Job): Promise<any> {
     if (error.code === 'P2002' || error.message?.includes('Unique constraint failed')) {
       console.log(`[Worker] Prisma unique constraint error - treating as ValidationError`);
       const validationError = new ValidationError('You are already enrolled in this course');
-      await job.moveToFailed({ message: validationError.message }, true);
+      // Discard the job to prevent retries
+      await job.discard();
       throw validationError;
     }
 
