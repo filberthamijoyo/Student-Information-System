@@ -36,6 +36,32 @@ export function CourseCard({ course }: CourseCardProps) {
   const isFull = seatsAvailable <= 0;
   const fillPercentage = (course.currentEnrollment / course.maxCapacity) * 100;
 
+  const addToCartMutation = useMutation({
+    mutationFn: async () => {
+      const selectedTermId = localStorage.getItem('selectedTermId');
+      if (!selectedTermId) {
+        throw new Error('Please select a term first');
+      }
+      const response = await api.post('/cart', {
+        courseId: course.id,
+        termId: parseInt(selectedTermId),
+      });
+      return response.data;
+    },
+    onSuccess: () => {
+      setEnrollmentStatus('Added to shopping cart!');
+      queryClient.invalidateQueries({ queryKey: ['cart'] });
+      queryClient.invalidateQueries({ queryKey: ['cart-summary'] });
+      setTimeout(() => setEnrollmentStatus(null), 3000);
+    },
+    onError: (error: any) => {
+      setEnrollmentStatus(
+        error.response?.data?.message || 'Failed to add to cart'
+      );
+      setTimeout(() => setEnrollmentStatus(null), 5000);
+    },
+  });
+
   const enrollMutation = useMutation({
     mutationFn: async () => {
       const response = await api.post('/enrollments', {
@@ -205,45 +231,54 @@ export function CourseCard({ course }: CourseCardProps) {
         </div>
       )}
 
-      {/* Enroll Button */}
+      {/* Action Buttons */}
       {user?.role === 'STUDENT' && (
-        <button
-          onClick={handleEnroll}
-          disabled={enrollMutation.isPending || isPolling}
-          className={`btn-primary w-full ${
-            enrollMutation.isPending || isPolling
-              ? 'opacity-50 cursor-not-allowed'
-              : ''
-          }`}
-        >
-          {enrollMutation.isPending || isPolling ? (
-            <span className="flex items-center justify-center">
-              <svg
-                className="animate-spin -ml-1 mr-3 h-5 w-5 text-white"
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-              >
-                <circle
-                  className="opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  strokeWidth="4"
-                ></circle>
-                <path
-                  className="opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                ></path>
-              </svg>
-              Processing...
-            </span>
-          ) : (
-            'Enroll in Course'
-          )}
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => addToCartMutation.mutate()}
+            disabled={addToCartMutation.isPending}
+            className="btn-secondary flex-1"
+          >
+            {addToCartMutation.isPending ? 'Adding...' : '🛒 Add to Cart'}
+          </button>
+          <button
+            onClick={handleEnroll}
+            disabled={enrollMutation.isPending || isPolling}
+            className={`btn-primary flex-1 ${
+              enrollMutation.isPending || isPolling
+                ? 'opacity-50 cursor-not-allowed'
+                : ''
+            }`}
+          >
+            {enrollMutation.isPending || isPolling ? (
+              <span className="flex items-center justify-center">
+                <svg
+                  className="animate-spin -ml-1 mr-3 h-5 w-5 text-white"
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  ></circle>
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  ></path>
+                </svg>
+                Processing...
+              </span>
+            ) : (
+              'Enroll Now'
+            )}
+          </button>
+        </div>
       )}
     </div>
   );

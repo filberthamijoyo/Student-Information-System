@@ -6,6 +6,9 @@ import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
 import { CourseList } from './pages/CourseList';
 import { MyEnrollments } from './pages/MyEnrollments';
+import { TermSelection } from './pages/TermSelection';
+import { ShoppingCart } from './pages/ShoppingCart';
+import { WeeklySchedule } from './pages/WeeklySchedule';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -67,6 +70,36 @@ function App() {
                 <ProtectedRoute>
                   <Layout>
                     <MyEnrollments />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/terms"
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <TermSelection />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/cart"
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <ShoppingCart />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/schedule"
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <WeeklySchedule />
                   </Layout>
                 </ProtectedRoute>
               }
