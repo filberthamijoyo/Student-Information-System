@@ -26,3 +26,18 @@ export class TransientError extends Error {
     Object.setPrototypeOf(this, TransientError.prototype);
   }
 }
+
+/**
+ * Application Error - General purpose error with status code
+ * Used for API errors with HTTP status codes
+ */
+export class AppError extends Error {
+  public readonly statusCode: number;
+
+  constructor(message: string, statusCode: number = 500) {
+    super(message);
+    this.name = 'AppError';
+    this.statusCode = statusCode;
+    Object.setPrototypeOf(this, AppError.prototype);
+  }
+}

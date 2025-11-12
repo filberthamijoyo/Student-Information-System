@@ -3,6 +3,9 @@ import { AuthRequest } from '../types/express.types';
 import { verifyAccessToken } from '../services/authService';
 import { prisma } from '../config/prisma';
 
+// Export AuthRequest type for use in controllers
+export { AuthRequest };
+
 /**
  * Authentication Middleware (Prisma-based)
  */
