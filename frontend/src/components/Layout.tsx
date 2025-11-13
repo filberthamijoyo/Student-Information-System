@@ -27,6 +27,10 @@ export function Layout({ children }: LayoutProps) {
     { path: '/planning', label: 'Degree Planning', icon: '🎓' },
     { path: '/applications', label: 'Applications', icon: '✉️' },
     { path: '/campus', label: 'Campus Info', icon: '📢' },
+    { path: '/academic-calendar', label: 'Academic Calendar', icon: '📅' },
+    { path: '/add-drop', label: 'Add/Drop Courses', icon: '📝' },
+    { path: '/major-change', label: 'Major Change', icon: '🎯' },
+    { path: '/evaluations', label: 'Course Evaluations', icon: '⭐' },
   ];
 
   // Faculty Navigation Items

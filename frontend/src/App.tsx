@@ -21,6 +21,12 @@ import { Transcript } from './pages/Transcript';
 import { FacultyDashboard } from './pages/FacultyDashboard';
 import { GradeSubmission } from './pages/GradeSubmission';
 
+// New Feature Pages
+import AcademicCalendarPage from './pages/AcademicCalendarPage';
+import AddDropPage from './pages/AddDropPage';
+import MajorChangePage from './pages/MajorChangePage';
+import EvaluationsPage from './pages/EvaluationsPage';
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -181,6 +187,54 @@ function App() {
                 <ProtectedRoute>
                   <Layout>
                     <CampusInfo />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+
+            {/* Academic Calendar */}
+            <Route
+              path="/academic-calendar"
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <AcademicCalendarPage />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+
+            {/* Add/Drop Courses */}
+            <Route
+              path="/add-drop"
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <AddDropPage />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+
+            {/* Major Change Request */}
+            <Route
+              path="/major-change"
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <MajorChangePage />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+
+            {/* Course Evaluations */}
+            <Route
+              path="/evaluations"
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <EvaluationsPage />
                   </Layout>
                 </ProtectedRoute>
               }

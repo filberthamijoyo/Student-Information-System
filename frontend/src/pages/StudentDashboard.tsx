@@ -1,6 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { academicAPI, financialAPI, planningAPI, campusAPI } from '../services/api';
+import { academicCalendarService } from '../services/academicCalendarService';
+import { courseEvaluationService } from '../services/courseEvaluationService';
+import { addDropService } from '../services/addDropService';
 import { Link } from 'react-router-dom';
 
 export function StudentDashboard() {
@@ -23,6 +26,29 @@ export function StudentDashboard() {
   const { data: announcements } = useQuery({
     queryKey: ['announcements'],
     queryFn: () => campusAPI.getAnnouncements().then(res => res.data.data),
+  });
+
+  const { data: upcomingEvents } = useQuery({
+    queryKey: ['upcoming-events'],
+    queryFn: () => academicCalendarService.getUpcomingEvents(),
+    enabled: !!user,
+  });
+
+  const { data: pendingEvaluations } = useQuery({
+    queryKey: ['pending-evaluations', user?.id],
+    queryFn: () => courseEvaluationService.getPendingEvaluations(user!.id),
+    enabled: !!user,
+  });
+
+  const { data: myAddDropRequests } = useQuery({
+    queryKey: ['my-add-drop-requests', user?.id],
+    queryFn: () => addDropService.getMyRequests(user!.id),
+    enabled: !!user,
+  });
+
+  const { data: addDropStatus } = useQuery({
+    queryKey: ['add-drop-status'],
+    queryFn: () => academicCalendarService.getAddDropStatus(),
   });
 
   const modules = [
@@ -86,6 +112,43 @@ export function StudentDashboard() {
       color: 'bg-orange-50 border-orange-200',
       items: ['Announcements', 'Events Calendar', 'Campus Resources'],
     },
+    {
+      title: 'Academic Calendar',
+      description: 'View important dates and academic events',
+      icon: '📅',
+      link: '/academic-calendar',
+      color: 'bg-teal-50 border-teal-200',
+      items: ['Calendar View', 'Upcoming Events', 'Add/Drop Periods'],
+      stat: upcomingEvents && upcomingEvents.length > 0 && `${upcomingEvents.length} upcoming events`,
+    },
+    {
+      title: 'Add/Drop Courses',
+      description: 'Request to add or drop courses',
+      icon: '📝',
+      link: '/add-drop',
+      color: 'bg-cyan-50 border-cyan-200',
+      items: ['Add Course', 'Drop Course', 'My Requests'],
+      stat: addDropStatus?.isOpen ? 'Add/Drop is OPEN' : 'Add/Drop is CLOSED',
+      alert: addDropStatus?.isOpen,
+    },
+    {
+      title: 'Major Change',
+      description: 'Request to change your major or school',
+      icon: '🎯',
+      link: '/major-change',
+      color: 'bg-lime-50 border-lime-200',
+      items: ['Submit Request', 'Request History'],
+    },
+    {
+      title: 'Course Evaluations',
+      description: 'Evaluate courses and view feedback',
+      icon: '⭐',
+      link: '/evaluations',
+      color: 'bg-amber-50 border-amber-200',
+      items: ['Pending Evaluations', 'My Evaluations', 'Course Stats'],
+      stat: pendingEvaluations && pendingEvaluations.length > 0 && `${pendingEvaluations.length} pending`,
+      alert: pendingEvaluations && pendingEvaluations.length > 0,
+    },
   ];
 
   return (
@@ -137,33 +200,129 @@ export function StudentDashboard() {
         </div>
       </div>
 
-      {/* Announcements */}
-      {announcements && announcements.length > 0 && (
-        <div className="mb-8 bg-blue-50 border-l-4 border-blue-500 p-4 rounded">
-          <div className="flex">
-            <div className="flex-shrink-0">
-              <span className="text-2xl">📢</span>
-            </div>
-            <div className="ml-3 flex-1">
-              <h3 className="text-sm font-medium text-blue-800">
-                Latest Announcement
-              </h3>
-              <div className="mt-2 text-sm text-blue-700">
-                <p className="font-semibold">{announcements[0].title}</p>
-                <p className="mt-1">{announcements[0].content.substring(0, 150)}...</p>
+      {/* Notifications and Alerts */}
+      <div className="space-y-4 mb-8">
+        {/* Add/Drop Period Alert */}
+        {addDropStatus?.isOpen && (
+          <div className="bg-green-50 border-l-4 border-green-500 p-4 rounded">
+            <div className="flex">
+              <div className="flex-shrink-0">
+                <span className="text-2xl">✅</span>
               </div>
-              <div className="mt-2">
-                <Link
-                  to="/campus"
-                  className="text-sm font-medium text-blue-600 hover:text-blue-500"
-                >
-                  View all announcements →
-                </Link>
+              <div className="ml-3 flex-1">
+                <h3 className="text-sm font-medium text-green-800">
+                  Add/Drop Period is Open
+                </h3>
+                <div className="mt-2 text-sm text-green-700">
+                  <p>
+                    You can add or drop courses until{' '}
+                    {addDropStatus.period && new Date(addDropStatus.period.end_date!).toLocaleDateString()}
+                  </p>
+                </div>
+                <div className="mt-2">
+                  <Link
+                    to="/add-drop"
+                    className="text-sm font-medium text-green-600 hover:text-green-500"
+                  >
+                    Go to Add/Drop →
+                  </Link>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+
+        {/* Pending Evaluations Alert */}
+        {pendingEvaluations && pendingEvaluations.length > 0 && (
+          <div className="bg-amber-50 border-l-4 border-amber-500 p-4 rounded">
+            <div className="flex">
+              <div className="flex-shrink-0">
+                <span className="text-2xl">⭐</span>
+              </div>
+              <div className="ml-3 flex-1">
+                <h3 className="text-sm font-medium text-amber-800">
+                  Pending Course Evaluations
+                </h3>
+                <div className="mt-2 text-sm text-amber-700">
+                  <p>
+                    You have {pendingEvaluations.length} course{pendingEvaluations.length !== 1 ? 's' : ''} waiting for evaluation.
+                    Your feedback helps improve education quality.
+                  </p>
+                </div>
+                <div className="mt-2">
+                  <Link
+                    to="/evaluations"
+                    className="text-sm font-medium text-amber-600 hover:text-amber-500"
+                  >
+                    Complete evaluations →
+                  </Link>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Upcoming Events */}
+        {upcomingEvents && upcomingEvents.length > 0 && (
+          <div className="bg-purple-50 border-l-4 border-purple-500 p-4 rounded">
+            <div className="flex">
+              <div className="flex-shrink-0">
+                <span className="text-2xl">📅</span>
+              </div>
+              <div className="ml-3 flex-1">
+                <h3 className="text-sm font-medium text-purple-800">
+                  Upcoming Academic Events
+                </h3>
+                <div className="mt-2 text-sm text-purple-700">
+                  <p className="font-semibold">{upcomingEvents[0].name}</p>
+                  <p className="mt-1">
+                    {new Date(upcomingEvents[0].start_date).toLocaleDateString()} - {upcomingEvents[0].event_type}
+                  </p>
+                  {upcomingEvents.length > 1 && (
+                    <p className="mt-1">+ {upcomingEvents.length - 1} more upcoming events</p>
+                  )}
+                </div>
+                <div className="mt-2">
+                  <Link
+                    to="/academic-calendar"
+                    className="text-sm font-medium text-purple-600 hover:text-purple-500"
+                  >
+                    View calendar →
+                  </Link>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Announcements */}
+        {announcements && announcements.length > 0 && (
+          <div className="bg-blue-50 border-l-4 border-blue-500 p-4 rounded">
+            <div className="flex">
+              <div className="flex-shrink-0">
+                <span className="text-2xl">📢</span>
+              </div>
+              <div className="ml-3 flex-1">
+                <h3 className="text-sm font-medium text-blue-800">
+                  Latest Announcement
+                </h3>
+                <div className="mt-2 text-sm text-blue-700">
+                  <p className="font-semibold">{announcements[0].title}</p>
+                  <p className="mt-1">{announcements[0].content.substring(0, 150)}...</p>
+                </div>
+                <div className="mt-2">
+                  <Link
+                    to="/campus"
+                    className="text-sm font-medium text-blue-600 hover:text-blue-500"
+                  >
+                    View all announcements →
+                  </Link>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Module Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
