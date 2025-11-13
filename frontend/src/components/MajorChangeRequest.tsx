@@ -5,10 +5,10 @@ import type { MajorChangeRequest as MajorChange } from '../types';
 interface MajorChangeRequestProps {
   currentUser: {
     id: number;
-    full_name: string;
+    fullName: string;
     major?: string;
     department?: string;
-    year_level?: number;
+    yearLevel?: number;
   };
 }
 
@@ -203,7 +203,7 @@ const MajorChangeRequest: React.FC<MajorChangeRequestProps> = ({ currentUser }) 
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-500">Year Level</label>
-            <p className="mt-1 text-lg font-medium text-gray-900">Year {currentUser.year_level || 1}</p>
+            <p className="mt-1 text-lg font-medium text-gray-900">Year {currentUser.yearLevel || 1}</p>
           </div>
         </div>
       </div>

@@ -20,9 +20,9 @@ interface Course {
 interface AddDropCourseProps {
   currentUser: {
     id: number;
-    full_name: string;
+    fullName: string;
     major?: string;
-    year_level?: number;
+    yearLevel?: number;
   };
 }
 
