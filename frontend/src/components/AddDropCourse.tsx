@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { addDropService, AddDropRequest } from '../services/addDropService';
+import { addDropService } from '../services/addDropService';
 import { academicCalendarService } from '../services/academicCalendarService';
+import { AddDropRequest } from '../types/academic';
 
 interface Course {
   id: number;

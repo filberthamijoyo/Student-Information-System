@@ -1,68 +1,12 @@
 import axios from 'axios';
+import {
+  CourseEvaluation,
+  SubmitEvaluationData,
+  CourseStats,
+  PendingEvaluation
+} from '../types/academic';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-
-export interface CourseEvaluation {
-  id: number;
-  student_id: number;
-  course_id: number;
-  term: 'FALL' | 'SPRING' | 'SUMMER';
-  year: number;
-  overall_rating: number;
-  instructor_rating: number;
-  course_content_rating: number;
-  workload_rating: number;
-  comments?: string;
-  is_anonymous: boolean;
-  submitted_at: string;
-  course_code?: string;
-  course_name?: string;
-  department?: string;
-}
-
-export interface SubmitEvaluationData {
-  student_id: number;
-  course_id: number;
-  term: 'FALL' | 'SPRING' | 'SUMMER';
-  year: number;
-  overall_rating: number;
-  instructor_rating: number;
-  course_content_rating: number;
-  workload_rating: number;
-  comments?: string;
-  is_anonymous?: boolean;
-}
-
-export interface CourseStats {
-  course: {
-    course_code: string;
-    course_name: string;
-    department: string;
-  };
-  statistics: {
-    total_responses: number;
-    average_overall_rating: string;
-    average_instructor_rating: string;
-    average_course_content_rating: string;
-    average_workload_rating: string;
-  };
-  comments: Array<{
-    comments: string;
-    submitted_at: string;
-    student_name: string;
-  }>;
-}
-
-export interface PendingEvaluation {
-  id: number;
-  course_code: string;
-  course_name: string;
-  department: string;
-  semester: string;
-  year: number;
-  credits: number;
-  instructor_name?: string;
-}
 
 const getAuthHeader = () => {
   const token = localStorage.getItem('token');

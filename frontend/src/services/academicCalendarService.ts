@@ -1,23 +1,7 @@
 import axios from 'axios';
+import { AcademicEvent, AddDropStatus } from '../types/academic';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-
-export interface AcademicEvent {
-  id: number;
-  event_type: string;
-  term: 'FALL' | 'SPRING' | 'SUMMER';
-  year: number;
-  start_date: string;
-  end_date?: string;
-  name: string;
-  description?: string;
-  created_at: string;
-}
-
-export interface AddDropStatus {
-  isOpen: boolean;
-  period: AcademicEvent | null;
-}
 
 const getAuthHeader = () => {
   const token = localStorage.getItem('token');

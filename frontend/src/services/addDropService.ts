@@ -1,47 +1,12 @@
 import axios from 'axios';
+import {
+  AddDropRequest,
+  SubmitRequestData,
+  ApproveRequestData,
+  RejectRequestData
+} from '../types/academic';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-
-export interface AddDropRequest {
-  id: number;
-  student_id: number;
-  course_id: number;
-  request_type: 'ADD' | 'DROP';
-  request_date: string;
-  status: 'PENDING' | 'APPROVED' | 'REJECTED';
-  reason: string;
-  is_late_request: boolean;
-  approved_by?: number;
-  approved_date?: string;
-  rejection_reason?: string;
-  course_code?: string;
-  course_name?: string;
-  department?: string;
-  credits?: number;
-  semester?: string;
-  year?: number;
-  approver_name?: string;
-  student_name?: string;
-  major?: string;
-  year_level?: number;
-}
-
-export interface SubmitRequestData {
-  student_id: number;
-  course_id: number;
-  request_type: 'ADD' | 'DROP';
-  reason: string;
-  is_late_request?: boolean;
-}
-
-export interface ApproveRequestData {
-  approved_by: number;
-}
-
-export interface RejectRequestData {
-  approved_by: number;
-  rejection_reason: string;
-}
 
 const getAuthHeader = () => {
   const token = localStorage.getItem('token');

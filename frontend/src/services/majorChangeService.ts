@@ -1,41 +1,11 @@
 import axios from 'axios';
+import {
+  MajorChangeRequest,
+  SubmitMajorChangeData,
+  DecideMajorChangeData
+} from '../types/academic';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-
-export interface MajorChangeRequest {
-  id: number;
-  student_id: number;
-  current_major?: string;
-  requested_major: string;
-  current_school?: string;
-  requested_school: string;
-  gpa: number;
-  units_completed: number;
-  request_date: string;
-  status: 'PENDING' | 'APPROVED' | 'REJECTED';
-  supporting_documents?: string;
-  approval_decision?: string;
-  decision_date?: string;
-  student_name?: string;
-  student_email?: string;
-  year_level?: number;
-  approver_name?: string;
-}
-
-export interface SubmitMajorChangeData {
-  student_id: number;
-  requested_major: string;
-  requested_school: string;
-  gpa: number;
-  units_completed: number;
-  supporting_documents?: string;
-}
-
-export interface DecideMajorChangeData {
-  status: 'APPROVED' | 'REJECTED';
-  approval_decision: string;
-  approver_id: number;
-}
 
 const getAuthHeader = () => {
   const token = localStorage.getItem('token');
