@@ -215,8 +215,8 @@ export function StudentDashboard() {
                 </h3>
                 <div className="mt-2 text-sm text-green-700">
                   <p>
-                    You can add or drop courses until{' '}
-                    {addDropStatus.period && new Date(addDropStatus.period.end_date!).toLocaleDateString()}
+                    You can add or drop courses{' '}
+                    {addDropStatus.period?.end_date && `until ${new Date(addDropStatus.period.end_date).toLocaleDateString()}`}
                   </p>
                 </div>
                 <div className="mt-2">

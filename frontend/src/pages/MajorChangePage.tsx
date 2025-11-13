@@ -3,7 +3,19 @@ import { useAuth } from '../context/AuthContext';
 import MajorChangeRequest from '../components/MajorChangeRequest';
 
 const MajorChangePage: React.FC = () => {
-  const { user } = useAuth();
+  const { user, isLoading } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 py-8">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-center items-center h-64">
+            <div className="text-gray-600">Loading...</div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (!user) {
     return (
