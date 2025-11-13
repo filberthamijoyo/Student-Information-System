@@ -1,14 +1,22 @@
 {
-  "name": "cuhk-course-selection",
+  "name": "cuhk-sis",
   "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "db:seed": "ts-node prisma/seed.ts",
+    "db:studio": "prisma studio",
+    "db:push": "prisma db push",
+    "db:generate": "prisma generate"
+  },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"
   },
   "devDependencies": {
     "@types/bcrypt": "^6.0.0",
-    "@types/node": "^24.10.0",
+    "@types/node": "^20.0.0",
     "prisma": "^6.19.0",
-    "ts-node": "^10.9.2"
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
   },
   "dependencies": {
     "@prisma/client": "^6.19.0",

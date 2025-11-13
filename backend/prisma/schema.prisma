@@ -1,15 +1,649 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
+// This is your Prisma schema file
 generator client {
-  provider = "prisma-client"
-  output   = "../src/generated/prisma"
+  provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ============================================================================
+// USER MANAGEMENT
+// ============================================================================
+
+model User {
+  id              Int              @id @default(autoincrement())
+  studentId       String           @unique
+  password        String
+  firstName       String
+  lastName        String
+  email           String           @unique
+  role            UserRole         @default(STUDENT)
+  isActive        Boolean          @default(true)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  // Relations
+  enrollments          Enrollment[]
+  shoppingCart         ShoppingCart[]
+  auditLogs            AuditLog[]
+  taughtCourses        Course[]              @relation("InstructorCourses")
+  student              Student?
+  faculty              Faculty?
+  personalInfo         PersonalInfo?
+  financialAccount     FinancialAccount?
+  transcripts          Transcript[]
+  gradesSubmitted      Grade[]               @relation("GradesSubmitted")
+  gradesApproved       Grade[]               @relation("GradesApproved")
+  applications         Application[]         @relation("UserApplications")
+  reviewedApplications Application[]         @relation("ReviewedApplications")
+  advisees             Student[]             @relation("StudentAdvisor")
+  announcements        Announcement[]
+  uploadedMaterials    CourseMaterial[]
+  attendanceMarked     Attendance[]
+}
+
+enum UserRole {
+  STUDENT
+  INSTRUCTOR
+  ADMINISTRATOR
+}
+
+// ============================================================================
+// ACADEMIC TERMS
+// ============================================================================
+
+model Term {
+  id              Int          @id @default(autoincrement())
+  name            String       // "2024-25 Term 1"
+  code            String       @unique // "2024-25-T1"
+  type            TermType
+  status          TermStatus
+  startDate       DateTime
+  endDate         DateTime
+  enrollmentStart DateTime
+  enrollmentEnd   DateTime
+  isActive        Boolean      @default(false)
+  createdAt       DateTime     @default(now())
+
+  courses         Course[]
+  enrollments     Enrollment[]
+  shoppingCart    ShoppingCart[]
+  transcripts     Transcript[]
+  charges         Charge[]
+  applications    Application[]
+}
+
+enum TermType {
+  FALL
+  SPRING
+  SUMMER
+}
+
+enum TermStatus {
+  UPCOMING
+  ENROLLMENT
+  ACTIVE
+  COMPLETED
+}
+
+// ============================================================================
+// COURSES
+// ============================================================================
+
+model Course {
+  id               Int              @id @default(autoincrement())
+  courseCode       String           // "CSC 4100"
+  section          String           // "101"
+  fullCode         String           @unique // "CSC 4100-101"
+  name             String
+  description      String           @db.Text
+  credits          Int
+  capacity         Int              @default(30)
+  enrolled         Int              @default(0)
+  waitlistCapacity Int              @default(10)
+  waitlisted       Int              @default(0)
+  department       String
+  level            CourseLevel
+  termId           Int
+  instructorId     Int?
+  prerequisites    Json?            // ["CSC 3100", "MAT 2040"]
+  version          Int              @default(0)
+  syllabus         String?
+  grading          String?
+  textbooks        String?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  term            Term             @relation(fields: [termId], references: [id])
+  instructor      User?            @relation("InstructorCourses", fields: [instructorId], references: [id])
+  timeSlots       TimeSlot[]
+  enrollments     Enrollment[]
+  shoppingCart    ShoppingCart[]
+  materials       CourseMaterial[]
+
+  @@index([termId, department])
+  @@index([courseCode])
+}
+
+enum CourseLevel {
+  UNDERGRADUATE
+  GRADUATE
+}
+
+model TimeSlot {
+  id          Int         @id @default(autoincrement())
+  courseId    Int
+  dayOfWeek   DayOfWeek
+  startTime   String      // "10:30"
+  endTime     String      // "11:45"
+  room        String?
+  building    String?
+  type        ClassType
+
+  course      Course      @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@index([courseId])
+}
+
+enum DayOfWeek {
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+  SATURDAY
+  SUNDAY
+}
+
+enum ClassType {
+  LECTURE
+  TUTORIAL
+  LAB
+  SEMINAR
+}
+
+// ============================================================================
+// ENROLLMENTS
+// ============================================================================
+
+model Enrollment {
+  id               Int              @id @default(autoincrement())
+  userId           Int
+  courseId         Int
+  termId           Int
+  status           EnrollmentStatus
+  grade            Grade?
+  waitlistPosition Int?
+  jobId            String?          @unique
+  enrolledAt       DateTime         @default(now())
+  droppedAt        DateTime?
+
+  user       User         @relation(fields: [userId], references: [id])
+  course     Course       @relation(fields: [courseId], references: [id])
+  term       Term         @relation(fields: [termId], references: [id])
+  attendance Attendance[]
+
+  @@unique([userId, courseId, termId])
+  @@index([userId, termId, status])
+  @@index([courseId, status])
+}
+
+enum EnrollmentStatus {
+  ENROLLED
+  WAITLISTED
+  DROPPED
+  COMPLETED
+}
+
+model ShoppingCart {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  courseId  Int
+  termId    Int
+  addedAt   DateTime @default(now())
+  notes     String?
+
+  user   User   @relation(fields: [userId], references: [id])
+  course Course @relation(fields: [courseId], references: [id])
+  term   Term   @relation(fields: [termId], references: [id])
+
+  @@unique([userId, courseId, termId])
+  @@index([userId, termId])
+}
+
+// ============================================================================
+// GRADES & TRANSCRIPTS
+// ============================================================================
+
+model Grade {
+  id            Int         @id @default(autoincrement())
+  enrollmentId  Int         @unique
+  letterGrade   String?     // A+, A, A-, B+, etc.
+  numericGrade  Float?      // 0-100
+  gradePoints   Float?      // 4.0 scale
+  status        GradeStatus @default(IN_PROGRESS)
+  submittedBy   Int?
+  submittedAt   DateTime?
+  approvedBy    Int?
+  approvedAt    DateTime?
+  comments      String?     @db.Text
+
+  enrollment Enrollment @relation(fields: [enrollmentId], references: [id])
+  instructor User?      @relation("GradesSubmitted", fields: [submittedBy], references: [id])
+  approver   User?      @relation("GradesApproved", fields: [approvedBy], references: [id])
+
+  @@index([enrollmentId])
+}
+
+enum GradeStatus {
+  IN_PROGRESS
+  SUBMITTED
+  APPROVED
+  PUBLISHED
+}
+
+model Transcript {
+  id               Int      @id @default(autoincrement())
+  userId           Int
+  termId           Int
+  gpa              Float
+  termGPA          Float
+  totalCredits     Float
+  earnedCredits    Float
+  qualityPoints    Float
+  academicStanding String
+  generatedAt      DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+  term Term @relation(fields: [termId], references: [id])
+
+  @@unique([userId, termId])
+  @@index([userId])
+}
+
+// ============================================================================
+// DEGREE REQUIREMENTS & PLANNING
+// ============================================================================
+
+model Major {
+  id           Int          @id @default(autoincrement())
+  code         String       @unique
+  name         String
+  department   String
+  degree       DegreeType
+  totalCredits Int
+  description  String?      @db.Text
+
+  students     Student[]
+  requirements Requirement[]
+}
+
+enum DegreeType {
+  BS
+  BA
+  MS
+  MA
+  PHD
+}
+
+model Requirement {
+  id          Int     @id @default(autoincrement())
+  majorId     Int
+  category    String  // Core, Elective, General Ed, etc.
+  name        String
+  credits     Int
+  courses     Json    // Array of acceptable course codes
+  description String? @db.Text
+
+  major Major @relation(fields: [majorId], references: [id])
+
+  @@index([majorId])
+}
+
+model Student {
+  id           Int           @id @default(autoincrement())
+  userId       Int           @unique
+  studentId    String        @unique
+  majorId      Int?
+  minorId      Int?
+  advisor      Int?
+  year         Int
+  expectedGrad DateTime?
+  admissionDate DateTime
+  status       StudentStatus @default(ACTIVE)
+
+  user        User   @relation(fields: [userId], references: [id])
+  major       Major? @relation(fields: [majorId], references: [id])
+  advisorUser User?  @relation("StudentAdvisor", fields: [advisor], references: [id])
+
+  @@index([userId])
+  @@index([studentId])
+}
+
+enum StudentStatus {
+  ACTIVE
+  LEAVE_OF_ABSENCE
+  WITHDRAWN
+  SUSPENDED
+  GRADUATED
+}
+
+// ============================================================================
+// FINANCIAL INFORMATION
+// ============================================================================
+
+model FinancialAccount {
+  id          Int       @id @default(autoincrement())
+  userId      Int       @unique
+  balance     Float     @default(0)
+  tuitionDue  Float     @default(0)
+  housingDue  Float     @default(0)
+  otherDue    Float     @default(0)
+  lastUpdated DateTime  @updatedAt
+
+  user     User      @relation(fields: [userId], references: [id])
+  charges  Charge[]
+  payments Payment[]
+}
+
+model Charge {
+  id          Int        @id @default(autoincrement())
+  accountId   Int
+  termId      Int?
+  type        ChargeType
+  description String
+  amount      Float
+  dueDate     DateTime
+  isPaid      Boolean    @default(false)
+  createdAt   DateTime   @default(now())
+
+  account FinancialAccount @relation(fields: [accountId], references: [id])
+  term    Term?            @relation(fields: [termId], references: [id])
+
+  @@index([accountId])
+}
+
+enum ChargeType {
+  TUITION
+  HOUSING
+  MEAL_PLAN
+  ACTIVITY_FEE
+  TECHNOLOGY_FEE
+  LIBRARY_FEE
+  OTHER
+}
+
+model Payment {
+  id              Int           @id @default(autoincrement())
+  accountId       Int
+  amount          Float
+  method          PaymentMethod
+  referenceNumber String
+  status          PaymentStatus @default(PENDING)
+  processedAt     DateTime?
+  createdAt       DateTime      @default(now())
+
+  account FinancialAccount @relation(fields: [accountId], references: [id])
+
+  @@index([accountId])
+}
+
+enum PaymentMethod {
+  BANK_TRANSFER
+  CREDIT_CARD
+  WECHAT_PAY
+  ALIPAY
+  CASH
+  CHECK
+}
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+// ============================================================================
+// APPLICATIONS & PETITIONS
+// ============================================================================
+
+model Application {
+  id             Int               @id @default(autoincrement())
+  userId         Int
+  type           ApplicationType
+  termId         Int?
+  status         ApplicationStatus @default(PENDING)
+  requestedDate  DateTime          @default(now())
+  reason         String            @db.Text
+  supportingDocs Json?
+  reviewedBy     Int?
+  reviewedAt     DateTime?
+  reviewNotes    String?           @db.Text
+  decision       String?
+
+  user     User  @relation("UserApplications", fields: [userId], references: [id])
+  term     Term? @relation(fields: [termId], references: [id])
+  reviewer User? @relation("ReviewedApplications", fields: [reviewedBy], references: [id])
+
+  @@index([userId])
+  @@index([status])
+}
+
+enum ApplicationType {
+  LEAVE_OF_ABSENCE
+  WITHDRAWAL
+  MAJOR_CHANGE
+  MINOR_DECLARATION
+  CREDIT_TRANSFER
+  OVERLOAD_REQUEST
+  GRADE_APPEAL
+  READMISSION
+  GRADUATION_APPLICATION
+}
+
+enum ApplicationStatus {
+  PENDING
+  UNDER_REVIEW
+  APPROVED
+  DENIED
+  WITHDRAWN
+}
+
+// ============================================================================
+// PERSONAL INFORMATION
+// ============================================================================
+
+model PersonalInfo {
+  id               Int       @id @default(autoincrement())
+  userId           Int       @unique
+  phoneNumber      String?
+  alternatePhone   String?
+  permanentAddress String?   @db.Text
+  mailingAddress   String?   @db.Text
+  city             String?
+  state            String?
+  postalCode       String?
+  country          String?   @default("China")
+  emergencyName    String?
+  emergencyRelation String?
+  emergencyPhone   String?
+  emergencyEmail   String?
+  dateOfBirth      DateTime?
+  gender           String?
+  nationality      String?
+  idNumber         String?
+  highSchool       String?
+  highSchoolGrad   DateTime?
+  updatedAt        DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+// ============================================================================
+// FACULTY DATA
+// ============================================================================
+
+model Faculty {
+  id            Int     @id @default(autoincrement())
+  userId        Int     @unique
+  employeeId    String  @unique
+  title         String
+  department    String
+  office        String?
+  officeHours   Json?
+  researchAreas Json?
+  bio           String? @db.Text
+  cvUrl         String?
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+model Attendance {
+  id           Int              @id @default(autoincrement())
+  enrollmentId Int
+  date         DateTime
+  status       AttendanceStatus
+  notes        String?
+  markedBy     Int
+
+  enrollment Enrollment @relation(fields: [enrollmentId], references: [id])
+  instructor User       @relation(fields: [markedBy], references: [id])
+
+  @@unique([enrollmentId, date])
+  @@index([enrollmentId])
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  EXCUSED
+}
+
+// ============================================================================
+// CAMPUS INFORMATION
+// ============================================================================
+
+model Announcement {
+  id             Int              @id @default(autoincrement())
+  title          String
+  content        String           @db.Text
+  type           AnnouncementType
+  priority       Priority         @default(NORMAL)
+  targetAudience Json
+  publishDate    DateTime         @default(now())
+  expiryDate     DateTime?
+  isActive       Boolean          @default(true)
+  createdBy      Int
+  attachments    Json?
+
+  author User @relation(fields: [createdBy], references: [id])
+
+  @@index([isActive, publishDate])
+}
+
+enum AnnouncementType {
+  ACADEMIC
+  ADMINISTRATIVE
+  EVENT
+  EMERGENCY
+  GENERAL
+}
+
+enum Priority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+model Event {
+  id              Int           @id @default(autoincrement())
+  title           String
+  description     String        @db.Text
+  location        String
+  startTime       DateTime
+  endTime         DateTime
+  category        EventCategory
+  organizer       String
+  registrationUrl String?
+  capacity        Int?
+  registered      Int           @default(0)
+  isPublic        Boolean       @default(true)
+  createdAt       DateTime      @default(now())
+
+  @@index([startTime])
+  @@index([category])
+}
+
+enum EventCategory {
+  ACADEMIC
+  CULTURAL
+  SPORTS
+  WORKSHOP
+  SOCIAL
+  CAREER
+  OTHER
+}
+
+// ============================================================================
+// COURSE MATERIALS
+// ============================================================================
+
+model CourseMaterial {
+  id          Int          @id @default(autoincrement())
+  courseId    Int
+  title       String
+  description String?      @db.Text
+  type        MaterialType
+  fileUrl     String
+  fileName    String
+  fileSize    Int?
+  uploadedBy  Int
+  uploadedAt  DateTime     @default(now())
+  isVisible   Boolean      @default(true)
+
+  course   Course @relation(fields: [courseId], references: [id])
+  uploader User   @relation(fields: [uploadedBy], references: [id])
+
+  @@index([courseId])
+}
+
+enum MaterialType {
+  SYLLABUS
+  LECTURE_NOTES
+  ASSIGNMENT
+  READING
+  EXAM
+  SOLUTION
+  RECORDING
+  OTHER
+}
+
+// ============================================================================
+// AUDIT LOG
+// ============================================================================
+
+model AuditLog {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  action    String
+  entity    String
+  entityId  Int?
+  details   Json?
+  ipAddress String?
+  userAgent String?
+  timestamp DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, timestamp])
+  @@index([action, timestamp])
 }
