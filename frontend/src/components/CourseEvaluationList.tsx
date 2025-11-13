@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { courseEvaluationService } from '../services/courseEvaluationService';
-import { PendingEvaluation } from '../types/academic';
+import type { PendingEvaluation } from '../types';
 import CourseEvaluation from './CourseEvaluation';
 
 interface CourseEvaluationListProps {

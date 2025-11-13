@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { academicCalendarService } from '../services/academicCalendarService';
-import { AcademicEvent, AddDropStatus } from '../types/academic';
+import type { AcademicEvent, AddDropStatus } from '../types';
 
 export const AcademicCalendar: React.FC = () => {
   const [events, setEvents] = useState<AcademicEvent[]>([]);

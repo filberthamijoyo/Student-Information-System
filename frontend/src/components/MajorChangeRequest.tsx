@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { majorChangeService } from '../services/majorChangeService';
-import { MajorChangeRequest as MajorChange } from '../types/academic';
+import type { MajorChangeRequest as MajorChange } from '../types';
 
 interface MajorChangeRequestProps {
   currentUser: {

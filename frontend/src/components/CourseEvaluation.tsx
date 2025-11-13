@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { courseEvaluationService } from '../services/courseEvaluationService';
-import { SubmitEvaluationData } from '../types/academic';
+import type { SubmitEvaluationData } from '../types';
 
 interface CourseInfo {
   id: number;
