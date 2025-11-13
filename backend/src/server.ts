@@ -22,6 +22,11 @@ import personalRoutes from './routes/personalRoutes';
 import planningRoutes from './routes/planningRoutes';
 import facultyRoutes from './routes/facultyRoutes';
 import campusRoutes from './routes/campusRoutes';
+// Additional SIS routes
+import academicCalendarRoutes from './routes/academicCalendarRoutes';
+import addDropRoutes from './routes/addDropRoutes';
+import majorChangeRoutes from './routes/majorChangeRoutes';
+import courseEvaluationRoutes from './routes/courseEvaluationRoutes';
 
 // Load environment variables
 dotenv.config();
@@ -102,6 +107,10 @@ app.get('/', (req: Request, res: Response) => {
       planning: '/api/planning',
       faculty: '/api/faculty',
       campus: '/api/campus',
+      academicCalendar: '/api/academic-calendar',
+      addDrop: '/api/add-drop',
+      majorChange: '/api/major-change',
+      courseEvaluation: '/api/course-evaluation',
     },
   });
 });
@@ -121,6 +130,12 @@ app.use('/api/personal', personalRoutes);
 app.use('/api/planning', planningRoutes);
 app.use('/api/faculty', facultyRoutes);
 app.use('/api/campus', campusRoutes);
+
+// Additional SIS API Routes
+app.use('/api/academic-calendar', academicCalendarRoutes);
+app.use('/api/add-drop', addDropRoutes);
+app.use('/api/major-change', majorChangeRoutes);
+app.use('/api/course-evaluation', courseEvaluationRoutes);
 
 /**
  * Error Handling Middleware
