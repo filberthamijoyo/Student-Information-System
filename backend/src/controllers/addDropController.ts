@@ -1,235 +1,247 @@
 import { Request, Response } from 'express';
 import { AuthRequest } from '../middleware/auth';
-import { query, getClient } from '../config/database';
+import { Prisma } from '@prisma/client';
+import prisma from '../config/prisma';
+
+type ControllerError = Error & { code?: string; status?: number };
+
+const createControllerError = (code: string, message: string, status = 400): ControllerError => {
+  const error = new Error(message) as ControllerError;
+  error.code = code;
+  error.status = status;
+  return error;
+};
 
 /**
  * Create a new add/drop request
  */
-export async function createRequest(req: AuthRequest, res: Response) {
-  const client = await getClient();
-
+export async function createRequest(req: AuthRequest, res: Response): Promise<void> {
   try {
     const { student_id, course_id, request_type, reason, is_late_request } = req.body;
 
     // Validation
     if (!student_id || !course_id || !request_type || !reason) {
-      return res.status(400).json({
+      res.status(400).json({
         success: false,
         error: 'Missing required fields: student_id, course_id, request_type, reason',
       });
+      return;
     }
 
     if (!['ADD', 'DROP'].includes(request_type)) {
-      return res.status(400).json({
+      res.status(400).json({
         success: false,
         error: 'request_type must be either ADD or DROP',
       });
+      return;
     }
 
-    await client.query('BEGIN');
+    const result = await prisma.$transaction(async (tx) => {
+      const student = await tx.$queryRaw<Array<Record<string, unknown>>>(Prisma.sql`
+        SELECT *
+        FROM users
+        WHERE id = ${student_id}
+          AND role = 'STUDENT'
+        LIMIT 1
+      `);
 
-    // Check if student exists
-    const studentCheck = await client.query(
-      'SELECT * FROM users WHERE id = $1 AND role = $2',
-      [student_id, 'STUDENT']
-    );
-
-    if (studentCheck.rows.length === 0) {
-      await client.query('ROLLBACK');
-      return res.status(404).json({
-        success: false,
-        error: 'Student not found',
-      });
-    }
-
-    // Check if course exists
-    const courseCheck = await client.query(
-      'SELECT * FROM courses WHERE id = $1',
-      [course_id]
-    );
-
-    if (courseCheck.rows.length === 0) {
-      await client.query('ROLLBACK');
-      return res.status(404).json({
-        success: false,
-        error: 'Course not found',
-      });
-    }
-
-    const course = courseCheck.rows[0];
-
-    // For ADD requests
-    if (request_type === 'ADD') {
-      // Check if already enrolled
-      const enrollmentCheck = await client.query(
-        'SELECT * FROM enrollments WHERE user_id = $1 AND course_id = $2 AND status IN ($3, $4)',
-        [student_id, course_id, 'ENROLLED', 'PENDING']
-      );
-
-      if (enrollmentCheck.rows.length > 0) {
-        await client.query('ROLLBACK');
-        return res.status(400).json({
-          success: false,
-          error: 'Student is already enrolled or has a pending enrollment for this course',
-        });
+      if (student.length === 0) {
+        throw createControllerError('StudentNotFound', 'Student not found', 404);
       }
 
-      // Check course capacity
-      if (course.current_enrollment >= course.max_capacity) {
-        await client.query('ROLLBACK');
-        return res.status(400).json({
-          success: false,
-          error: 'Course is at full capacity',
-        });
+      const courseRows = await tx.$queryRaw<Array<Record<string, any>>>(Prisma.sql`
+        SELECT *
+        FROM courses
+        WHERE id = ${course_id}
+        LIMIT 1
+      `);
+
+      if (courseRows.length === 0) {
+        throw createControllerError('CourseNotFound', 'Course not found', 404);
       }
 
-      // Check unit limits (9-18 units per term)
-      const currentEnrollments = await client.query(
-        `SELECT COALESCE(SUM(c.credits), 0) as total_credits
-         FROM enrollments e
-         JOIN courses c ON e.course_id = c.id
-         WHERE e.user_id = $1
-         AND e.status = 'ENROLLED'
-         AND c.semester = $2
-         AND c.year = $3`,
-        [student_id, course.semester, course.year]
-      );
+      const course = courseRows[0];
 
-      const currentCredits = parseFloat(currentEnrollments.rows[0].total_credits);
-      const newTotalCredits = currentCredits + course.credits;
+      if (request_type === 'ADD') {
+        const enrollmentCheck = await tx.$queryRaw<Array<Record<string, unknown>>>(Prisma.sql`
+          SELECT *
+          FROM enrollments
+          WHERE user_id = ${student_id}
+            AND course_id = ${course_id}
+            AND status IN ('CONFIRMED', 'PENDING')
+        `);
 
-      // Get enrollment rules
-      const minUnitsRule = await client.query(
-        "SELECT value FROM enrollment_rules WHERE rule_type = 'MIN_UNITS' ORDER BY effective_date DESC LIMIT 1"
-      );
-      const maxUnitsRule = await client.query(
-        "SELECT value FROM enrollment_rules WHERE rule_type = 'MAX_UNITS' ORDER BY effective_date DESC LIMIT 1"
-      );
+        if (enrollmentCheck.length > 0) {
+          throw createControllerError(
+            'AlreadyEnrolled',
+            'Student is already enrolled or has a pending enrollment for this course'
+          );
+        }
 
-      const minUnits = minUnitsRule.rows.length > 0 ? parseFloat(minUnitsRule.rows[0].value) : 9;
-      const maxUnits = maxUnitsRule.rows.length > 0 ? parseFloat(maxUnitsRule.rows[0].value) : 18;
+        if (Number(course.current_enrollment) >= Number(course.max_capacity)) {
+          throw createControllerError('CourseFull', 'Course is at full capacity');
+        }
 
-      if (newTotalCredits > maxUnits) {
-        await client.query('ROLLBACK');
-        return res.status(400).json({
-          success: false,
-          error: `Adding this course would exceed the maximum unit limit of ${maxUnits}. Current: ${currentCredits}, New total would be: ${newTotalCredits}`,
-        });
+        const currentCreditsRows = await tx.$queryRaw<
+          Array<{ total_credits: string }>
+        >(Prisma.sql`
+          SELECT COALESCE(SUM(c.credits), 0)::text AS total_credits
+          FROM enrollments e
+          JOIN courses c ON e.course_id = c.id
+          WHERE e.user_id = ${student_id}
+            AND e.status = 'CONFIRMED'
+            AND c.semester = ${course.semester}
+            AND c.year = ${course.year}
+        `);
+
+        const currentCredits = Number.parseFloat(
+          currentCreditsRows[0]?.total_credits || '0'
+        );
+        const newTotalCredits = currentCredits + Number(course.credits);
+
+        const [maxUnitsRow] = await tx.$queryRaw<
+          Array<{ value: string }>
+        >(Prisma.sql`
+          SELECT value
+          FROM enrollment_rules
+          WHERE rule_type = 'MAX_UNITS'
+          ORDER BY effective_date DESC
+          LIMIT 1
+        `);
+
+        const maxUnits = maxUnitsRow ? Number.parseFloat(maxUnitsRow.value) : 18;
+
+        if (newTotalCredits > maxUnits) {
+          throw createControllerError(
+            'ExceedsMaxUnits',
+            `Adding this course would exceed the maximum unit limit of ${maxUnits}. Current: ${currentCredits}, New total would be: ${newTotalCredits}`
+          );
+        }
       }
-    }
 
-    // For DROP requests
-    if (request_type === 'DROP') {
-      // Check if student is enrolled
-      const enrollmentCheck = await client.query(
-        'SELECT * FROM enrollments WHERE user_id = $1 AND course_id = $2 AND status = $3',
-        [student_id, course_id, 'ENROLLED']
-      );
+      if (request_type === 'DROP') {
+        const enrollmentCheck = await tx.$queryRaw<Array<Record<string, any>>>(Prisma.sql`
+          SELECT *
+          FROM enrollments
+          WHERE user_id = ${student_id}
+            AND course_id = ${course_id}
+            AND status = 'CONFIRMED'
+        `);
 
-      if (enrollmentCheck.rows.length === 0) {
-        await client.query('ROLLBACK');
-        return res.status(400).json({
-          success: false,
-          error: 'Student is not enrolled in this course',
-        });
+        if (enrollmentCheck.length === 0) {
+          throw createControllerError('NotEnrolled', 'Student is not enrolled in this course');
+        }
+
+        const currentCreditsRows = await tx.$queryRaw<
+          Array<{ total_credits: string }>
+        >(Prisma.sql`
+          SELECT COALESCE(SUM(c.credits), 0)::text AS total_credits
+          FROM enrollments e
+          JOIN courses c ON e.course_id = c.id
+          WHERE e.user_id = ${student_id}
+            AND e.status = 'CONFIRMED'
+            AND c.semester = ${course.semester}
+            AND c.year = ${course.year}
+        `);
+
+        const currentCredits = Number.parseFloat(
+          currentCreditsRows[0]?.total_credits || '0'
+        );
+        const newTotalCredits = currentCredits - Number(course.credits);
+
+        const [minUnitsRow] = await tx.$queryRaw<
+          Array<{ value: string }>
+        >(Prisma.sql`
+          SELECT value
+          FROM enrollment_rules
+          WHERE rule_type = 'MIN_UNITS'
+          ORDER BY effective_date DESC
+          LIMIT 1
+        `);
+
+        const minUnits = minUnitsRow ? Number.parseFloat(minUnitsRow.value) : 9;
+
+        if (newTotalCredits < minUnits) {
+          throw createControllerError(
+            'BelowMinUnits',
+            `Dropping this course would fall below the minimum unit requirement of ${minUnits}. Current: ${currentCredits}, New total would be: ${newTotalCredits}`
+          );
+        }
       }
 
-      // Check minimum unit requirement after drop
-      const currentEnrollments = await client.query(
-        `SELECT COALESCE(SUM(c.credits), 0) as total_credits
-         FROM enrollments e
-         JOIN courses c ON e.course_id = c.id
-         WHERE e.user_id = $1
-         AND e.status = 'ENROLLED'
-         AND c.semester = $2
-         AND c.year = $3`,
-        [student_id, course.semester, course.year]
-      );
+      const insertedRows = await tx.$queryRaw<Array<Record<string, unknown>>>(Prisma.sql`
+        INSERT INTO course_add_drop_requests
+          (student_id, course_id, request_type, request_date, status, reason, is_late_request)
+        VALUES
+          (${student_id}, ${course_id}, ${request_type}, CURRENT_TIMESTAMP, 'PENDING', ${reason}, ${is_late_request ?? false})
+        RETURNING *
+      `);
 
-      const currentCredits = parseFloat(currentEnrollments.rows[0].total_credits);
-      const newTotalCredits = currentCredits - course.credits;
-
-      const minUnitsRule = await client.query(
-        "SELECT value FROM enrollment_rules WHERE rule_type = 'MIN_UNITS' ORDER BY effective_date DESC LIMIT 1"
-      );
-      const minUnits = minUnitsRule.rows.length > 0 ? parseFloat(minUnitsRule.rows[0].value) : 9;
-
-      if (newTotalCredits < minUnits) {
-        await client.query('ROLLBACK');
-        return res.status(400).json({
-          success: false,
-          error: `Dropping this course would fall below the minimum unit requirement of ${minUnits}. Current: ${currentCredits}, New total would be: ${newTotalCredits}`,
-        });
-      }
-    }
-
-    // Create the add/drop request
-    const insertQuery = `
-      INSERT INTO course_add_drop_requests
-      (student_id, course_id, request_type, request_date, status, reason, is_late_request)
-      VALUES ($1, $2, $3, CURRENT_TIMESTAMP, 'PENDING', $4, $5)
-      RETURNING *
-    `;
-
-    const result = await client.query(insertQuery, [
-      student_id,
-      course_id,
-      request_type,
-      reason,
-      is_late_request || false,
-    ]);
-
-    await client.query('COMMIT');
+      return insertedRows[0];
+    });
 
     res.status(201).json({
       success: true,
-      data: result.rows[0],
+      data: result,
       message: 'Add/drop request created successfully',
     });
-  } catch (error) {
-    await client.query('ROLLBACK');
+  } catch (error: any) {
     console.error('Create add/drop request error:', error);
+
+    const controllerError = error as ControllerError;
+    if (controllerError.code) {
+      res.status(controllerError.status ?? 400).json({
+        success: false,
+        error: controllerError.message,
+      });
+      return;
+    }
+
     res.status(500).json({
       success: false,
       error: 'Failed to create add/drop request',
     });
-  } finally {
-    client.release();
   }
 }
 
 /**
  * Get all requests for a specific student
  */
-export async function getMyRequests(req: Request, res: Response) {
+export async function getMyRequests(req: AuthRequest, res: Response): Promise<void> {
   try {
-    const { studentId } = req.params;
+    const userId = req.user!.id;
 
-    const queryText = `
+    const requests = await prisma.$queryRaw<Array<Record<string, unknown>>>(Prisma.sql`
       SELECT
         r.*,
         c.course_code,
         c.course_name,
         c.department,
         c.credits,
-        c.semester,
-        c.year,
-        u.full_name as approver_name
+        u.full_name AS approver_name
       FROM course_add_drop_requests r
       JOIN courses c ON r.course_id = c.id
       LEFT JOIN users u ON r.approved_by = u.id
-      WHERE r.student_id = $1
+      WHERE r.student_id = ${userId}
       ORDER BY r.request_date DESC
-    `;
-
-    const result = await query(queryText, [parseInt(studentId)]);
+    `);
 
     res.status(200).json({
       success: true,
-      data: result.rows,
+      data: requests,
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Get my requests error:', error);
+    
+    // If table doesn't exist, return empty array
+    if (error.code === '42P01' || error.message?.includes('does not exist')) {
+      res.status(200).json({
+        success: true,
+        data: [],
+      });
+      return;
+    }
+    
     res.status(500).json({
       success: false,
       error: 'Failed to fetch requests',
@@ -240,13 +252,13 @@ export async function getMyRequests(req: Request, res: Response) {
 /**
  * Get all pending requests (admin/instructor)
  */
-export async function getPendingRequests(req: AuthRequest, res: Response) {
+export async function getPendingRequests(_req: AuthRequest, res: Response): Promise<void> {
   try {
-    const queryText = `
+    const requests = await prisma.$queryRaw<Array<Record<string, unknown>>>(Prisma.sql`
       SELECT
         r.*,
-        s.full_name as student_name,
-        s.user_identifier as student_id,
+        s.full_name AS student_name,
+        s.user_identifier AS student_id,
         s.major,
         s.year_level,
         c.course_code,
@@ -260,13 +272,11 @@ export async function getPendingRequests(req: AuthRequest, res: Response) {
       JOIN courses c ON r.course_id = c.id
       WHERE r.status = 'PENDING'
       ORDER BY r.request_date ASC
-    `;
-
-    const result = await query(queryText);
+    `);
 
     res.status(200).json({
       success: true,
-      data: result.rows,
+      data: requests,
     });
   } catch (error) {
     console.error('Get pending requests error:', error);
@@ -280,155 +290,157 @@ export async function getPendingRequests(req: AuthRequest, res: Response) {
 /**
  * Approve an add/drop request
  */
-export async function approveRequest(req: AuthRequest, res: Response) {
-  const client = await getClient();
-
+export async function approveRequest(req: AuthRequest, res: Response): Promise<void> {
   try {
     const { requestId } = req.params;
     const { approved_by } = req.body;
 
     if (!approved_by) {
-      return res.status(400).json({
+      res.status(400).json({
         success: false,
         error: 'approved_by (user_id) is required',
       });
+      return;
     }
 
-    await client.query('BEGIN');
+    await prisma.$transaction(async (tx) => {
+      const requestRows = await tx.$queryRaw<Array<Record<string, any>>>(Prisma.sql`
+        SELECT *
+        FROM course_add_drop_requests
+        WHERE id = ${Number.parseInt(requestId, 10)}
+        FOR UPDATE
+      `);
 
-    // Get the request details
-    const requestQuery = await client.query(
-      'SELECT * FROM course_add_drop_requests WHERE id = $1',
-      [parseInt(requestId)]
-    );
+      if (requestRows.length === 0) {
+        throw createControllerError('RequestNotFound', 'Request not found', 404);
+      }
 
-    if (requestQuery.rows.length === 0) {
-      await client.query('ROLLBACK');
-      return res.status(404).json({
-        success: false,
-        error: 'Request not found',
-      });
-    }
+      const request = requestRows[0];
 
-    const request = requestQuery.rows[0];
+      if (request.status !== 'PENDING') {
+        throw createControllerError('AlreadyProcessed', 'Request has already been processed');
+      }
 
-    if (request.status !== 'PENDING') {
-      await client.query('ROLLBACK');
-      return res.status(400).json({
-        success: false,
-        error: 'Request has already been processed',
-      });
-    }
+      const courseRows = await tx.$queryRaw<Array<Record<string, any>>>(Prisma.sql`
+        SELECT *
+        FROM courses
+        WHERE id = ${request.course_id}
+        LIMIT 1
+      `);
 
-    // Get course details
-    const courseQuery = await client.query(
-      'SELECT * FROM courses WHERE id = $1',
-      [request.course_id]
-    );
-    const course = courseQuery.rows[0];
+      if (courseRows.length === 0) {
+        throw createControllerError('CourseNotFound', 'Course not found', 404);
+      }
 
-    if (request.request_type === 'ADD') {
-      // Create enrollment record
-      await client.query(
-        `INSERT INTO enrollments (user_id, course_id, status, enrolled_at)
-         VALUES ($1, $2, 'ENROLLED', CURRENT_TIMESTAMP)`,
-        [request.student_id, request.course_id]
-      );
+      if (request.request_type === 'ADD') {
+        await tx.$executeRaw(Prisma.sql`
+          INSERT INTO enrollments (user_id, course_id, status, enrolled_at)
+          VALUES (${request.student_id}, ${request.course_id}, 'CONFIRMED', CURRENT_TIMESTAMP)
+        `);
 
-      // Update course enrollment count
-      await client.query(
-        'UPDATE courses SET current_enrollment = current_enrollment + 1 WHERE id = $1',
-        [request.course_id]
-      );
-    } else if (request.request_type === 'DROP') {
-      // Update enrollment status to DROPPED
-      await client.query(
-        `UPDATE enrollments
-         SET status = 'DROPPED', updated_at = CURRENT_TIMESTAMP
-         WHERE user_id = $1 AND course_id = $2`,
-        [request.student_id, request.course_id]
-      );
+        await tx.$executeRaw(Prisma.sql`
+          UPDATE courses
+          SET current_enrollment = current_enrollment + 1
+          WHERE id = ${request.course_id}
+        `);
+      } else if (request.request_type === 'DROP') {
+        await tx.$executeRaw(Prisma.sql`
+          UPDATE enrollments
+          SET status = 'DROPPED', updated_at = CURRENT_TIMESTAMP
+          WHERE user_id = ${request.student_id} AND course_id = ${request.course_id}
+        `);
 
-      // Update course enrollment count
-      await client.query(
-        'UPDATE courses SET current_enrollment = current_enrollment - 1 WHERE id = $1',
-        [request.course_id]
-      );
-    }
+        await tx.$executeRaw(Prisma.sql`
+          UPDATE courses
+          SET current_enrollment = current_enrollment - 1
+          WHERE id = ${request.course_id}
+        `);
+      }
 
-    // Update request status
-    await client.query(
-      `UPDATE course_add_drop_requests
-       SET status = 'APPROVED', approved_by = $1, approved_date = CURRENT_TIMESTAMP
-       WHERE id = $2`,
-      [approved_by, parseInt(requestId)]
-    );
-
-    await client.query('COMMIT');
+      await tx.$executeRaw(Prisma.sql`
+        UPDATE course_add_drop_requests
+        SET status = 'APPROVED',
+            approved_by = ${approved_by},
+            approved_date = CURRENT_TIMESTAMP
+        WHERE id = ${Number.parseInt(requestId, 10)}
+      `);
+    });
 
     res.status(200).json({
       success: true,
       message: 'Request approved successfully',
     });
   } catch (error) {
-    await client.query('ROLLBACK');
     console.error('Approve request error:', error);
+
+    const controllerError = error as ControllerError;
+    if (controllerError.code) {
+      res.status(controllerError.status ?? 400).json({
+        success: false,
+        error: controllerError.message,
+      });
+      return;
+    }
+
     res.status(500).json({
       success: false,
       error: 'Failed to approve request',
     });
-  } finally {
-    client.release();
   }
 }
 
 /**
  * Reject an add/drop request
  */
-export async function rejectRequest(req: AuthRequest, res: Response) {
+export async function rejectRequest(req: AuthRequest, res: Response): Promise<void> {
   try {
     const { requestId } = req.params;
     const { approved_by, rejection_reason } = req.body;
 
     if (!approved_by || !rejection_reason) {
-      return res.status(400).json({
+      res.status(400).json({
         success: false,
         error: 'approved_by and rejection_reason are required',
       });
+      return;
     }
 
-    // Check if request exists and is pending
-    const requestCheck = await query(
-      'SELECT * FROM course_add_drop_requests WHERE id = $1',
-      [parseInt(requestId)]
-    );
+    const requestRows = await prisma.$queryRaw<Array<Record<string, any>>>(Prisma.sql`
+      SELECT *
+      FROM course_add_drop_requests
+      WHERE id = ${Number.parseInt(requestId, 10)}
+      LIMIT 1
+    `);
 
-    if (requestCheck.rows.length === 0) {
-      return res.status(404).json({
+    if (requestRows.length === 0) {
+      res.status(404).json({
         success: false,
         error: 'Request not found',
       });
+      return;
     }
 
-    if (requestCheck.rows[0].status !== 'PENDING') {
-      return res.status(400).json({
+    if (requestRows[0].status !== 'PENDING') {
+      res.status(400).json({
         success: false,
         error: 'Request has already been processed',
       });
+      return;
     }
 
-    // Update request status to REJECTED
-    const result = await query(
-      `UPDATE course_add_drop_requests
-       SET status = 'REJECTED', approved_by = $1, approved_date = CURRENT_TIMESTAMP, rejection_reason = $2
-       WHERE id = $3
-       RETURNING *`,
-      [approved_by, rejection_reason, parseInt(requestId)]
-    );
+    const updatedRows = await prisma.$queryRaw<Array<Record<string, unknown>>>(Prisma.sql`
+      UPDATE course_add_drop_requests
+      SET status = 'REJECTED',
+          approved_by = ${approved_by},
+          approved_date = CURRENT_TIMESTAMP,
+          rejection_reason = ${rejection_reason}
+      WHERE id = ${Number.parseInt(requestId, 10)}
+      RETURNING *
+    `);
 
     res.status(200).json({
       success: true,
-      data: result.rows[0],
+      data: updatedRows[0],
       message: 'Request rejected successfully',
     });
   } catch (error) {

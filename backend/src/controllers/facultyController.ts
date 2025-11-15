@@ -1,6 +1,6 @@
 import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth';
-import prisma from '../config/database';
+import prisma from '../config/prisma';
 import { AppError } from '../utils/errors';
 import { Role } from '@prisma/client';
 
@@ -11,17 +11,19 @@ export async function getMyCourses(req: AuthRequest, res: Response) {
   try {
     const user = req.user!;
 
-    if (user.role !== Role.INSTRUCTOR) {
+    if (user.role !== 'INSTRUCTOR') {
       throw new AppError('Unauthorized', 403);
     }
 
-    const courses = await prisma.course.findMany({
-      where: { instructorId: user.id },
+    const courses = await prisma.courses.findMany({
+      where: { instructor_id: user.id },
       include: {
-        _count: {
-          select: { enrollments: true },
+        enrollments: {
+          where: {
+            status: 'CONFIRMED',
+          },
         },
-        timeSlots: true,
+        time_slots: true,
       },
       orderBy: [
         { year: 'desc' },
@@ -33,14 +35,14 @@ export async function getMyCourses(req: AuthRequest, res: Response) {
       success: true,
       data: courses.map(course => ({
         id: course.id,
-        courseCode: course.courseCode,
-        courseName: course.courseName,
+        courseCode: course.course_code,
+        courseName: course.course_name,
         credits: course.credits,
         semester: course.semester,
         year: course.year,
-        maxCapacity: course.maxCapacity,
-        currentEnrollment: course._count.enrollments,
-        timeSlots: course.timeSlots,
+        maxCapacity: course.max_capacity,
+        currentEnrollment: course.current_enrollment,
+        timeSlots: course.time_slots,
       })),
     });
   } catch (error) {
@@ -67,11 +69,11 @@ export async function getRoster(req: AuthRequest, res: Response) {
     const user = req.user!;
     const { courseId } = req.params;
 
-    if (user.role !== Role.INSTRUCTOR) {
+    if (user.role !== 'INSTRUCTOR') {
       throw new AppError('Unauthorized', 403);
     }
 
-    const course = await prisma.course.findFirst({
+    const course = await prisma.courses.findFirst({
       where: {
         id: parseInt(courseId),
         instructorId: user.id,
@@ -105,13 +107,13 @@ export async function getRoster(req: AuthRequest, res: Response) {
       data: {
         course: {
           courseCode: course.courseCode,
-          courseName: course.courseName,
+          courseName: course.name,
         },
         students: course.enrollments.map(e => ({
           enrollmentId: e.id,
           userId: e.user.id,
           studentId: e.user.student?.studentId,
-          fullName: e.user.fullName,
+          fullName: `${e.user.firstName} ${e.user.lastName}`,
           email: e.user.email,
           major: e.user.student?.major?.name,
           year: e.user.student?.year,
@@ -142,11 +144,11 @@ export async function getCourseGrades(req: AuthRequest, res: Response) {
     const user = req.user!;
     const { courseId } = req.params;
 
-    if (user.role !== Role.INSTRUCTOR) {
+    if (user.role !== 'INSTRUCTOR') {
       throw new AppError('Unauthorized', 403);
     }
 
-    const course = await prisma.course.findFirst({
+    const course = await prisma.courses.findFirst({
       where: {
         id: parseInt(courseId),
         instructorId: user.id,
@@ -209,7 +211,7 @@ export async function submitGrades(req: AuthRequest, res: Response) {
     const user = req.user!;
     const { grades } = req.body; // Array of { enrollmentId, numericGrade, letterGrade, comments }
 
-    if (user.role !== Role.INSTRUCTOR) {
+    if (user.role !== 'INSTRUCTOR') {
       throw new AppError('Unauthorized', 403);
     }
 
@@ -224,26 +226,26 @@ export async function submitGrades(req: AuthRequest, res: Response) {
         // Calculate grade points based on letter grade
         const gradePoints = calculateGradePoints(letterGrade);
 
-        return prisma.grade.upsert({
-          where: { enrollmentId: parseInt(enrollmentId) },
+        return prisma.grades.upsert({
+          where: { enrollment_id: parseInt(enrollmentId) },
           update: {
-            numericGrade: parseFloat(numericGrade),
-            letterGrade,
-            gradePoints,
+            numeric_grade: parseFloat(numericGrade),
+            letter_grade: letterGrade,
+            grade_points: gradePoints,
             comments,
             status: 'SUBMITTED',
-            submittedBy: user.id,
-            submittedAt: new Date(),
+            submitted_by: user.id,
+            submitted_at: new Date(),
           },
           create: {
-            enrollmentId: parseInt(enrollmentId),
-            numericGrade: parseFloat(numericGrade),
-            letterGrade,
-            gradePoints,
+            enrollment_id: parseInt(enrollmentId),
+            numeric_grade: parseFloat(numericGrade),
+            letter_grade: letterGrade,
+            grade_points: gradePoints,
             comments,
             status: 'SUBMITTED',
-            submittedBy: user.id,
-            submittedAt: new Date(),
+            submitted_by: user.id,
+            submitted_at: new Date(),
           },
         });
       })
@@ -279,21 +281,21 @@ export async function updateGrade(req: AuthRequest, res: Response) {
     const { gradeId } = req.params;
     const { numericGrade, letterGrade, comments } = req.body;
 
-    if (user.role !== Role.INSTRUCTOR) {
+    if (user.role !== 'INSTRUCTOR') {
       throw new AppError('Unauthorized', 403);
     }
 
     const gradePoints = calculateGradePoints(letterGrade);
 
-    const grade = await prisma.grade.update({
+    const grade = await prisma.grades.update({
       where: { id: parseInt(gradeId) },
       data: {
-        numericGrade: numericGrade ? parseFloat(numericGrade) : undefined,
-        letterGrade,
-        gradePoints,
+        numeric_grade: numericGrade ? parseFloat(numericGrade) : undefined,
+        letter_grade: letterGrade,
+        grade_points: gradePoints,
         comments,
-        submittedBy: user.id,
-        submittedAt: new Date(),
+        submitted_by: user.id,
+        submitted_at: new Date(),
       },
     });
 
@@ -326,11 +328,11 @@ export async function getAttendance(req: AuthRequest, res: Response) {
     const user = req.user!;
     const { courseId } = req.params;
 
-    if (user.role !== Role.INSTRUCTOR) {
+    if (user.role !== 'INSTRUCTOR') {
       throw new AppError('Unauthorized', 403);
     }
 
-    const course = await prisma.course.findFirst({
+    const course = await prisma.courses.findFirst({
       where: {
         id: parseInt(courseId),
         instructorId: user.id,
@@ -343,7 +345,8 @@ export async function getAttendance(req: AuthRequest, res: Response) {
           include: {
             user: {
               select: {
-                fullName: true,
+                firstName: true,
+                lastName: true,
                 student: {
                   select: {
                     studentId: true,
@@ -398,7 +401,7 @@ export async function markAttendance(req: AuthRequest, res: Response) {
     const user = req.user!;
     const { attendanceRecords } = req.body; // Array of { enrollmentId, date, status, notes }
 
-    if (user.role !== Role.INSTRUCTOR) {
+    if (user.role !== 'INSTRUCTOR') {
       throw new AppError('Unauthorized', 403);
     }
 
@@ -412,22 +415,22 @@ export async function markAttendance(req: AuthRequest, res: Response) {
 
         return prisma.attendance.upsert({
           where: {
-            enrollmentId_date: {
-              enrollmentId: parseInt(enrollmentId),
+            enrollment_id_date: {
+              enrollment_id: parseInt(enrollmentId),
               date: new Date(date),
             },
           },
           update: {
             status,
             notes,
-            markedBy: user.id,
+            marked_by: user.id,
           },
           create: {
-            enrollmentId: parseInt(enrollmentId),
+            enrollment_id: parseInt(enrollmentId),
             date: new Date(date),
             status,
             notes,
-            markedBy: user.id,
+            marked_by: user.id,
           },
         });
       })
@@ -462,7 +465,7 @@ export async function getMaterials(req: AuthRequest, res: Response) {
     const user = req.user!;
     const { courseId } = req.params;
 
-    const course = await prisma.course.findFirst({
+    const course = await prisma.courses.findFirst({
       where: {
         id: parseInt(courseId),
         instructorId: user.id,
@@ -509,12 +512,12 @@ export async function uploadMaterial(req: AuthRequest, res: Response) {
     const { courseId } = req.params;
     const { title, description, type, fileUrl, fileName, fileSize, isVisible } = req.body;
 
-    if (user.role !== Role.INSTRUCTOR) {
+    if (user.role !== 'INSTRUCTOR') {
       throw new AppError('Unauthorized', 403);
     }
 
     // Verify instructor owns the course
-    const course = await prisma.course.findFirst({
+    const course = await prisma.courses.findFirst({
       where: {
         id: parseInt(courseId),
         instructorId: user.id,
@@ -525,17 +528,17 @@ export async function uploadMaterial(req: AuthRequest, res: Response) {
       throw new AppError('Course not found or unauthorized', 404);
     }
 
-    const material = await prisma.courseMaterial.create({
+    const material = await prisma.course_materials.create({
       data: {
-        courseId: parseInt(courseId),
+        course_id: parseInt(courseId),
         title,
         description,
         type,
-        fileUrl,
-        fileName,
-        fileSize: fileSize ? parseInt(fileSize) : null,
-        uploadedBy: user.id,
-        isVisible: isVisible !== undefined ? isVisible : true,
+        file_url: fileUrl,
+        file_name: fileName,
+        file_size: fileSize ? parseInt(fileSize) : null,
+        uploaded_by: user.id,
+        is_visible: isVisible !== undefined ? isVisible : true,
       },
     });
 

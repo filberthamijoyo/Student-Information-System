@@ -4,6 +4,12 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 /**
+ * Redis connection state tracking
+ */
+let isConnected = false;
+let connectionAttempts = 0;
+
+/**
  * Redis Client Configuration
  */
 const redisConfig = {
@@ -11,10 +17,27 @@ const redisConfig = {
   port: parseInt(process.env.REDIS_PORT || '6379'),
   password: process.env.REDIS_PASSWORD || undefined,
   retryStrategy: (times: number) => {
-    const delay = Math.min(times * 50, 2000);
+    connectionAttempts = times;
+    // Exponential backoff: 50ms, 100ms, 200ms, 400ms, 800ms, 1600ms, max 3000ms
+    const delay = Math.min(times * 50, 3000);
+    
+    // Stop retrying after 60 attempts (about 5 minutes)
+    if (times > 60) {
+      console.error('✗ Redis: Max retry attempts reached. Please check if Redis is running.');
+      return null; // Stop retrying
+    }
+    
+    if (times > 1) {
+      console.log(`Redis reconnecting (attempt ${times}) in ${delay}ms...`);
+    }
     return delay;
   },
   maxRetriesPerRequest: 3,
+  enableReadyCheck: true,
+  enableOfflineQueue: false, // Don't queue commands when offline
+  lazyConnect: false, // Connect immediately
+  connectTimeout: 10000, // 10 second connection timeout
+  keepAlive: 30000, // 30 seconds
 };
 
 /**
@@ -26,23 +49,46 @@ export const redisClient = new Redis(redisConfig);
  * Redis Event Handlers
  */
 redisClient.on('connect', () => {
-  console.log('✓ Connected to Redis');
+  isConnected = false; // Not ready yet, just connected
+  connectionAttempts = 0;
+  console.log(`✓ Redis: Connecting to ${redisConfig.host}:${redisConfig.port}...`);
 });
 
 redisClient.on('ready', () => {
-  console.log('✓ Redis client is ready');
+  isConnected = true;
+  connectionAttempts = 0;
+  console.log('✓ Redis: Client is ready and connected');
 });
 
 redisClient.on('error', (err) => {
-  console.error('✗ Redis Client Error:', err);
+  isConnected = false;
+  // Only log connection errors, not command errors (those are handled in try/catch)
+  if (err.message.includes('ECONNREFUSED')) {
+    console.error(`✗ Redis: Connection refused. Is Redis running on ${redisConfig.host}:${redisConfig.port}?`);
+    console.error('   Start Redis with: docker-compose up -d redis');
+    console.error('   Or install locally: brew install redis && brew services start redis');
+  } else if (err.message.includes('ENOTFOUND')) {
+    console.error(`✗ Redis: Host not found: ${redisConfig.host}`);
+  } else if (err.message.includes('timeout')) {
+    console.error(`✗ Redis: Connection timeout to ${redisConfig.host}:${redisConfig.port}`);
+  } else {
+    console.error('✗ Redis Client Error:', err.message);
+  }
 });
 
 redisClient.on('close', () => {
-  console.log('Redis connection closed');
+  isConnected = false;
+  console.log('⚠ Redis: Connection closed');
 });
 
-redisClient.on('reconnecting', () => {
-  console.log('Redis client is reconnecting...');
+redisClient.on('reconnecting', (delay: number) => {
+  isConnected = false;
+  console.log(`🔄 Redis: Reconnecting in ${delay}ms... (attempt ${connectionAttempts + 1})`);
+});
+
+redisClient.on('end', () => {
+  isConnected = false;
+  console.log('⚠ Redis: Connection ended');
 });
 
 /**
@@ -127,15 +173,51 @@ export const deleteCachedPattern = async (pattern: string): Promise<number> => {
 };
 
 /**
+ * Get Redis connection status
+ */
+export const getRedisStatus = (): { connected: boolean; status: string } => {
+  const status = redisClient.status;
+  return {
+    connected: isConnected && status === 'ready',
+    status: status || 'unknown',
+  };
+};
+
+/**
  * Test Redis connection
  */
 export const testRedisConnection = async (): Promise<boolean> => {
   try {
+    // Check if client is ready
+    if (redisClient.status !== 'ready') {
+      return false;
+    }
+    
     const pong = await redisClient.ping();
-    console.log('Redis connection test successful:', pong);
-    return pong === 'PONG';
-  } catch (error) {
-    console.error('Redis connection test failed:', error);
+    const connected = pong === 'PONG';
+    
+    if (connected) {
+      isConnected = true;
+    }
+    
+    return connected;
+  } catch (error: any) {
+    isConnected = false;
+    // Don't log here - error handler already logs connection issues
+    return false;
+  }
+};
+
+/**
+ * Reconnect to Redis manually
+ */
+export const reconnectRedis = async (): Promise<boolean> => {
+  try {
+    console.log('Attempting to reconnect to Redis...');
+    await redisClient.connect();
+    return await testRedisConnection();
+  } catch (error: any) {
+    console.error('Failed to reconnect to Redis:', error.message);
     return false;
   }
 };

@@ -1,6 +1,6 @@
 import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth';
-import prisma from '../config/database';
+import prisma from '../config/prisma';
 import { AppError } from '../utils/errors';
 
 /**
@@ -10,13 +10,13 @@ export async function getPersonalInfo(req: AuthRequest, res: Response) {
   try {
     const userId = req.user!.id;
 
-    let personalInfo = await prisma.personalInfo.findUnique({
+    let personalInfo = await prisma.personal_info.findUnique({
       where: { userId },
     });
 
     // Create personal info if it doesn't exist
     if (!personalInfo) {
-      personalInfo = await prisma.personalInfo.create({
+      personalInfo = await prisma.personal_info.create({
         data: { userId },
       });
     }
@@ -46,7 +46,7 @@ export async function updatePersonalInfo(req: AuthRequest, res: Response) {
     delete updateData.id;
     delete updateData.userId;
 
-    const personalInfo = await prisma.personalInfo.upsert({
+    const personalInfo = await prisma.personal_info.upsert({
       where: { userId },
       update: updateData,
       create: {
@@ -77,7 +77,7 @@ export async function updateEmergencyContact(req: AuthRequest, res: Response) {
     const userId = req.user!.id;
     const { emergencyName, emergencyRelation, emergencyPhone, emergencyEmail } = req.body;
 
-    const personalInfo = await prisma.personalInfo.upsert({
+    const personalInfo = await prisma.personal_info.upsert({
       where: { userId },
       update: {
         emergencyName,
@@ -121,7 +121,7 @@ export async function updateAddress(req: AuthRequest, res: Response) {
     const userId = req.user!.id;
     const { permanentAddress, mailingAddress, city, state, postalCode, country } = req.body;
 
-    const personalInfo = await prisma.personalInfo.upsert({
+    const personalInfo = await prisma.personal_info.upsert({
       where: { userId },
       update: {
         permanentAddress,

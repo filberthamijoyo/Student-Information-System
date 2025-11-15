@@ -1,6 +1,3 @@
-// Prisma Schema for CUHK Course Selection System
-// This schema includes comprehensive models for handling concurrent course enrollment
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -11,87 +8,497 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
-// ============================================================================
-// USER MODEL
-// ============================================================================
-
 model User {
-  id             Int          @id @default(autoincrement())
-  userIdentifier String       @unique @map("user_identifier")
-  email          String       @unique
-  passwordHash   String       @map("password_hash")
-  fullName       String       @map("full_name")
-  role           Role         @default(STUDENT)
-  major          String?
-  yearLevel      Int?         @map("year_level")
-  department     String?
-  createdAt      DateTime     @default(now()) @map("created_at")
-  updatedAt      DateTime     @updatedAt @map("updated_at")
+  id                                                                   Int                        @id @default(autoincrement())
+  userIdentifier                                                       String                     @unique @map("user_identifier")
+  email                                                                String                     @unique
+  passwordHash                                                         String                     @map("password_hash")
+  fullName                                                             String                     @map("full_name")
+  role                                                                 Role                       @default(STUDENT)
+  major                                                                String?
+  yearLevel                                                            Int?                       @map("year_level")
+  department                                                           String?
+  createdAt                                                            DateTime                   @default(now()) @map("created_at")
+  updatedAt                                                            DateTime                   @updatedAt @map("updated_at")
+  announcements                                                        Announcement[]
+  reviewedApplications                                                 Application[]              @relation("ReviewedApplications")
+  applications                                                         Application[]              @relation("UserApplications")
+  attendanceMarked                                                     Attendance[]
+  auditLogs                                                            AuditLog[]
+  course_add_drop_requests_course_add_drop_requests_approved_byTousers course_add_drop_requests[] @relation("course_add_drop_requests_approved_byTousers")
+  course_add_drop_requests_course_add_drop_requests_student_idTousers  course_add_drop_requests[] @relation("course_add_drop_requests_student_idTousers")
+  course_evaluations                                                   course_evaluations[]
+  uploadedMaterials                                                    CourseMaterial[]
+  taughtCourses                                                        Course[]                   @relation("InstructorCourses")
+  enrollments                                                          Enrollment[]
+  faculty                                                              Faculty?
+  financialAccount                                                     FinancialAccount?
+  gradesApproved                                                       Grade[]                    @relation("GradesApproved")
+  gradesSubmitted                                                      Grade[]                    @relation("GradesSubmitted")
+  major_change_requests                                                major_change_requests[]
+  personalInfo                                                         PersonalInfo?
+  advisees                                                             Student[]                  @relation("StudentAdvisor")
+  student                                                              Student?
+  transcripts                                                          Transcript[]
 
-  // Relations
-  enrollments            Enrollment[]
-  taughtCourses          Course[]            @relation("InstructorCourses")
-  auditLogs              AuditLog[]
-  student                Student?
-  faculty                Faculty?
-  personalInfo           PersonalInfo?
-  financialAccount       FinancialAccount?
-  transcripts            Transcript[]
-  gradesSubmitted        Grade[]             @relation("GradesSubmitted")
-  gradesApproved         Grade[]             @relation("GradesApproved")
-  applications           Application[]       @relation("UserApplications")
-  reviewedApplications   Application[]       @relation("ReviewedApplications")
-  advisees               Student[]           @relation("StudentAdvisor")
-  announcements          Announcement[]
-  uploadedMaterials      CourseMaterial[]
-  attendanceMarked       Attendance[]
-
-  @@map("users")
   @@index([email])
   @@index([role])
   @@index([userIdentifier])
+  @@map("users")
+}
+
+model Course {
+  id                       Int                        @id @default(autoincrement())
+  courseCode               String                     @unique @map("course_code")
+  courseName               String                     @map("course_name")
+  department               String
+  credits                  Int
+  maxCapacity              Int                        @map("max_capacity")
+  currentEnrollment        Int                        @default(0) @map("current_enrollment")
+  description              String?
+  prerequisites            String?
+  semester                 Semester
+  year                     Int
+  status                   CourseStatus               @default(ACTIVE)
+  instructorId             Int?                       @map("instructor_id")
+  version                  Int                        @default(0)
+  createdAt                DateTime                   @default(now()) @map("created_at")
+  updatedAt                DateTime                   @updatedAt @map("updated_at")
+  course_add_drop_requests course_add_drop_requests[]
+  course_evaluations       course_evaluations[]
+  materials                CourseMaterial[]
+  instructor               User?                      @relation("InstructorCourses", fields: [instructorId], references: [id])
+  enrollments              Enrollment[]
+  timeSlots                TimeSlot[]
+
+  @@index([courseCode])
+  @@index([department])
+  @@index([semester, year])
+  @@index([status])
+  @@index([instructorId])
+  @@map("courses")
+}
+
+model TimeSlot {
+  id        Int       @id @default(autoincrement())
+  courseId  Int       @map("course_id")
+  dayOfWeek DayOfWeek @map("day_of_week")
+  startTime String    @map("start_time")
+  endTime   String    @map("end_time")
+  location  String?
+  course    Course    @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@index([courseId])
+  @@index([dayOfWeek])
+  @@map("time_slots")
+}
+
+model Enrollment {
+  id               Int              @id @default(autoincrement())
+  userId           Int              @map("user_id")
+  courseId         Int              @map("course_id")
+  status           EnrollmentStatus @default(PENDING)
+  waitlistPosition Int?             @map("waitlist_position")
+  enrolledAt       DateTime         @default(now()) @map("enrolled_at")
+  updatedAt        DateTime         @updatedAt @map("updated_at")
+  attendance       Attendance[]
+  course           Course           @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  grade            Grade?
+
+  @@unique([userId, courseId])
+  @@index([userId])
+  @@index([courseId])
+  @@index([status])
+  @@map("enrollments")
+}
+
+model Grade {
+  id           Int         @id @default(autoincrement())
+  enrollmentId Int         @unique @map("enrollment_id")
+  letterGrade  String?     @map("letter_grade")
+  numericGrade Float?      @map("numeric_grade")
+  gradePoints  Float?      @map("grade_points")
+  status       GradeStatus @default(IN_PROGRESS)
+  submittedBy  Int?        @map("submitted_by")
+  submittedAt  DateTime?   @map("submitted_at")
+  approvedBy   Int?        @map("approved_by")
+  approvedAt   DateTime?   @map("approved_at")
+  comments     String?
+  approver     User?       @relation("GradesApproved", fields: [approvedBy], references: [id])
+  enrollment   Enrollment  @relation(fields: [enrollmentId], references: [id])
+  instructor   User?       @relation("GradesSubmitted", fields: [submittedBy], references: [id])
+
+  @@index([enrollmentId])
+  @@map("grades")
+}
+
+model Transcript {
+  id               Int      @id @default(autoincrement())
+  userId           Int      @map("user_id")
+  semester         Semester
+  year             Int
+  gpa              Float
+  termGPA          Float    @map("term_gpa")
+  totalCredits     Float    @map("total_credits")
+  earnedCredits    Float    @map("earned_credits")
+  qualityPoints    Float    @map("quality_points")
+  academicStanding String   @map("academic_standing")
+  generatedAt      DateTime @default(now()) @map("generated_at")
+  user             User     @relation(fields: [userId], references: [id])
+
+  @@unique([userId, semester, year])
+  @@index([userId])
+  @@map("transcripts")
+}
+
+model Major {
+  id           Int           @id @default(autoincrement())
+  code         String        @unique
+  name         String
+  department   String
+  degree       DegreeType
+  totalCredits Int           @map("total_credits")
+  description  String?
+  requirements Requirement[]
+  students     Student[]
+
+  @@map("majors")
+}
+
+model Requirement {
+  id          Int     @id @default(autoincrement())
+  majorId     Int     @map("major_id")
+  category    String
+  name        String
+  credits     Int
+  courses     Json
+  description String?
+  major       Major   @relation(fields: [majorId], references: [id])
+
+  @@index([majorId])
+  @@map("requirements")
+}
+
+model Student {
+  id            Int           @id @default(autoincrement())
+  userId        Int           @unique @map("user_id")
+  studentId     String        @unique @map("student_id")
+  majorId       Int?          @map("major_id")
+  minorId       Int?          @map("minor_id")
+  advisorId     Int?          @map("advisor_id")
+  year          Int
+  expectedGrad  DateTime?     @map("expected_grad")
+  admissionDate DateTime      @map("admission_date")
+  status        StudentStatus @default(ACTIVE)
+  advisor       User?         @relation("StudentAdvisor", fields: [advisorId], references: [id])
+  major         Major?        @relation(fields: [majorId], references: [id])
+  user          User          @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([studentId])
+  @@map("students")
+}
+
+model FinancialAccount {
+  id          Int       @id @default(autoincrement())
+  userId      Int       @unique @map("user_id")
+  balance     Float     @default(0)
+  tuitionDue  Float     @default(0) @map("tuition_due")
+  housingDue  Float     @default(0) @map("housing_due")
+  otherDue    Float     @default(0) @map("other_due")
+  lastUpdated DateTime  @updatedAt @map("last_updated")
+  charges     Charge[]
+  user        User      @relation(fields: [userId], references: [id])
+  payments    Payment[]
+
+  @@map("financial_accounts")
+}
+
+model Charge {
+  id          Int              @id @default(autoincrement())
+  accountId   Int              @map("account_id")
+  semester    Semester?
+  year        Int?
+  type        ChargeType
+  description String
+  amount      Float
+  dueDate     DateTime         @map("due_date")
+  isPaid      Boolean          @default(false) @map("is_paid")
+  createdAt   DateTime         @default(now()) @map("created_at")
+  account     FinancialAccount @relation(fields: [accountId], references: [id])
+
+  @@index([accountId])
+  @@map("charges")
+}
+
+model Payment {
+  id              Int              @id @default(autoincrement())
+  accountId       Int              @map("account_id")
+  amount          Float
+  method          PaymentMethod
+  referenceNumber String           @map("reference_number")
+  status          PaymentStatus    @default(PENDING)
+  processedAt     DateTime?        @map("processed_at")
+  createdAt       DateTime         @default(now()) @map("created_at")
+  account         FinancialAccount @relation(fields: [accountId], references: [id])
+
+  @@index([accountId])
+  @@map("payments")
+}
+
+model Application {
+  id             Int               @id @default(autoincrement())
+  userId         Int               @map("user_id")
+  type           ApplicationType
+  semester       Semester?
+  year           Int?
+  status         ApplicationStatus @default(PENDING)
+  requestedDate  DateTime          @default(now()) @map("requested_date")
+  reason         String
+  supportingDocs Json?             @map("supporting_docs")
+  reviewedBy     Int?              @map("reviewed_by")
+  reviewedAt     DateTime?         @map("reviewed_at")
+  reviewNotes    String?           @map("review_notes")
+  decision       String?
+  reviewer       User?             @relation("ReviewedApplications", fields: [reviewedBy], references: [id])
+  user           User              @relation("UserApplications", fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([status])
+  @@map("applications")
+}
+
+model PersonalInfo {
+  id                Int       @id @default(autoincrement())
+  userId            Int       @unique @map("user_id")
+  phoneNumber       String?   @map("phone_number")
+  alternatePhone    String?   @map("alternate_phone")
+  permanentAddress  String?   @map("permanent_address")
+  mailingAddress    String?   @map("mailing_address")
+  city              String?
+  state             String?
+  postalCode        String?   @map("postal_code")
+  country           String?   @default("China")
+  emergencyName     String?   @map("emergency_name")
+  emergencyRelation String?   @map("emergency_relation")
+  emergencyPhone    String?   @map("emergency_phone")
+  emergencyEmail    String?   @map("emergency_email")
+  dateOfBirth       DateTime? @map("date_of_birth")
+  gender            String?
+  nationality       String?
+  idNumber          String?   @map("id_number")
+  highSchool        String?   @map("high_school")
+  highSchoolGrad    DateTime? @map("high_school_grad")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  user              User      @relation(fields: [userId], references: [id])
+
+  @@map("personal_info")
+}
+
+model Faculty {
+  id            Int     @id @default(autoincrement())
+  userId        Int     @unique @map("user_id")
+  employeeId    String  @unique @map("employee_id")
+  title         String
+  department    String
+  office        String?
+  officeHours   Json?   @map("office_hours")
+  researchAreas Json?   @map("research_areas")
+  bio           String?
+  cvUrl         String? @map("cv_url")
+  user          User    @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@map("faculty")
+}
+
+model Attendance {
+  id           Int              @id @default(autoincrement())
+  enrollmentId Int              @map("enrollment_id")
+  date         DateTime
+  status       AttendanceStatus
+  notes        String?
+  markedBy     Int              @map("marked_by")
+  enrollment   Enrollment       @relation(fields: [enrollmentId], references: [id])
+  instructor   User             @relation(fields: [markedBy], references: [id])
+
+  @@unique([enrollmentId, date])
+  @@index([enrollmentId])
+  @@map("attendance")
+}
+
+model Announcement {
+  id             Int              @id @default(autoincrement())
+  title          String
+  content        String
+  type           AnnouncementType
+  priority       Priority         @default(NORMAL)
+  targetAudience Json             @map("target_audience")
+  publishDate    DateTime         @default(now()) @map("publish_date")
+  expiryDate     DateTime?        @map("expiry_date")
+  isActive       Boolean          @default(true) @map("is_active")
+  createdBy      Int              @map("created_by")
+  attachments    Json?
+  author         User             @relation(fields: [createdBy], references: [id])
+
+  @@index([isActive, publishDate])
+  @@map("announcements")
+}
+
+model Event {
+  id              Int           @id @default(autoincrement())
+  title           String
+  description     String
+  location        String
+  startTime       DateTime      @map("start_time")
+  endTime         DateTime      @map("end_time")
+  category        EventCategory
+  organizer       String
+  registrationUrl String?       @map("registration_url")
+  capacity        Int?
+  registered      Int           @default(0)
+  isPublic        Boolean       @default(true) @map("is_public")
+  createdAt       DateTime      @default(now()) @map("created_at")
+
+  @@index([startTime])
+  @@index([category])
+  @@map("events")
+}
+
+model CourseMaterial {
+  id          Int          @id @default(autoincrement())
+  courseId    Int          @map("course_id")
+  title       String
+  description String?
+  type        MaterialType
+  fileUrl     String       @map("file_url")
+  fileName    String       @map("file_name")
+  fileSize    Int?         @map("file_size")
+  uploadedBy  Int          @map("uploaded_by")
+  uploadedAt  DateTime     @default(now()) @map("uploaded_at")
+  isVisible   Boolean      @default(true) @map("is_visible")
+  course      Course       @relation(fields: [courseId], references: [id])
+  uploader    User         @relation(fields: [uploadedBy], references: [id])
+
+  @@index([courseId])
+  @@map("course_materials")
+}
+
+model AuditLog {
+  id         Int      @id @default(autoincrement())
+  userId     Int      @map("user_id")
+  action     String
+  entityType String   @map("entity_type")
+  entityId   Int      @map("entity_id")
+  changes    Json?
+  ipAddress  String?  @map("ip_address")
+  timestamp  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([action])
+  @@index([timestamp])
+  @@index([entityType, entityId])
+  @@map("audit_logs")
+}
+
+model Term {
+  id              Int       @id @default(autoincrement())
+  name            String
+  code            String    @unique
+  type            String
+  status          String
+  startDate       DateTime  @db.Timestamp(6)
+  endDate         DateTime  @db.Timestamp(6)
+  enrollmentStart DateTime  @db.Timestamp(6)
+  enrollmentEnd   DateTime  @db.Timestamp(6)
+  isActive        Boolean?  @default(false)
+  createdAt       DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model academic_events {
+  id          Int       @id @default(autoincrement())
+  event_type  String    @db.VarChar(50)
+  term        String    @db.VarChar(20)
+  year        Int
+  start_date  DateTime  @db.Date
+  end_date    DateTime? @db.Date
+  name        String
+  description String?
+  created_at  DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model course_add_drop_requests {
+  id                                                Int       @id @default(autoincrement())
+  student_id                                        Int?
+  course_id                                         Int?
+  request_type                                      String    @db.VarChar(10)
+  request_date                                      DateTime? @default(now()) @db.Timestamp(6)
+  status                                            String?   @default("PENDING") @db.VarChar(20)
+  reason                                            String?
+  approved_by                                       Int?
+  approved_date                                     DateTime? @db.Timestamp(6)
+  rejection_reason                                  String?
+  is_late_request                                   Boolean?  @default(false)
+  created_at                                        DateTime? @default(now()) @db.Timestamp(6)
+  users_course_add_drop_requests_approved_byTousers User?     @relation("course_add_drop_requests_approved_byTousers", fields: [approved_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  courses                                           Course?   @relation(fields: [course_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users_course_add_drop_requests_student_idTousers  User?     @relation("course_add_drop_requests_student_idTousers", fields: [student_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model course_evaluations {
+  id                    Int       @id @default(autoincrement())
+  student_id            Int?
+  course_id             Int?
+  term                  String?   @db.VarChar(20)
+  year                  Int?
+  overall_rating        Int?
+  instructor_rating     Int?
+  course_content_rating Int?
+  workload_rating       Int?
+  comments              String?
+  is_anonymous          Boolean?  @default(true)
+  submitted_at          DateTime? @default(now()) @db.Timestamp(6)
+  created_at            DateTime? @default(now()) @db.Timestamp(6)
+  courses               Course?   @relation(fields: [course_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users                 User?     @relation(fields: [student_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([student_id, course_id, term, year])
+}
+
+model enrollment_rules {
+  id             Int       @id @default(autoincrement())
+  rule_type      String    @db.VarChar(50)
+  value          Int
+  description    String?
+  effective_date DateTime? @db.Date
+  created_at     DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model major_change_requests {
+  id                   Int       @id @default(autoincrement())
+  student_id           Int?
+  current_major        String?   @db.VarChar(100)
+  requested_major      String?   @db.VarChar(100)
+  current_school       String?   @db.VarChar(100)
+  requested_school     String?   @db.VarChar(100)
+  gpa                  Decimal?  @db.Decimal(3, 2)
+  units_completed      Int?
+  request_date         DateTime? @default(now()) @db.Timestamp(6)
+  status               String?   @default("PENDING") @db.VarChar(20)
+  supporting_documents String?
+  approval_decision    String?
+  decision_date        DateTime? @db.Timestamp(6)
+  created_at           DateTime? @default(now()) @db.Timestamp(6)
+  users                User?     @relation(fields: [student_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 }
 
 enum Role {
   STUDENT
   INSTRUCTOR
   ADMINISTRATOR
-}
-
-// ============================================================================
-// COURSE MODEL
-// ============================================================================
-
-model Course {
-  id                Int           @id @default(autoincrement())
-  courseCode        String        @unique @map("course_code")
-  courseName        String        @map("course_name")
-  department        String
-  credits           Int
-  maxCapacity       Int           @map("max_capacity")
-  currentEnrollment Int           @default(0) @map("current_enrollment")
-  description       String?       @db.Text
-  prerequisites     String?       @db.Text
-  semester          Semester
-  year              Int
-  status            CourseStatus  @default(ACTIVE)
-  instructorId      Int?          @map("instructor_id")
-  version           Int           @default(0) // For optimistic locking
-  createdAt         DateTime      @default(now()) @map("created_at")
-  updatedAt         DateTime      @updatedAt @map("updated_at")
-
-  // Relations
-  instructor        User?            @relation("InstructorCourses", fields: [instructorId], references: [id])
-  timeSlots         TimeSlot[]
-  enrollments       Enrollment[]
-  materials         CourseMaterial[]
-
-  @@map("courses")
-  @@index([courseCode])
-  @@index([department])
-  @@index([semester, year])
-  @@index([status])
-  @@index([instructorId])
 }
 
 enum Semester {
@@ -106,26 +513,6 @@ enum CourseStatus {
   FULL
 }
 
-// ============================================================================
-// TIME SLOT MODEL
-// ============================================================================
-
-model TimeSlot {
-  id        Int       @id @default(autoincrement())
-  courseId  Int       @map("course_id")
-  dayOfWeek DayOfWeek @map("day_of_week")
-  startTime String    @map("start_time") // Format: "09:00"
-  endTime   String    @map("end_time")   // Format: "10:30"
-  location  String?
-
-  // Relations
-  course    Course    @relation(fields: [courseId], references: [id], onDelete: Cascade)
-
-  @@map("time_slots")
-  @@index([courseId])
-  @@index([dayOfWeek])
-}
-
 enum DayOfWeek {
   MONDAY
   TUESDAY
@@ -136,32 +523,6 @@ enum DayOfWeek {
   SUNDAY
 }
 
-// ============================================================================
-// ENROLLMENT MODEL
-// ============================================================================
-
-model Enrollment {
-  id               Int              @id @default(autoincrement())
-  userId           Int              @map("user_id")
-  courseId         Int              @map("course_id")
-  status           EnrollmentStatus @default(PENDING)
-  waitlistPosition Int?             @map("waitlist_position")
-  enrolledAt       DateTime         @default(now()) @map("enrolled_at")
-  updatedAt        DateTime         @updatedAt @map("updated_at")
-
-  // Relations
-  user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  course           Course           @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  grade            Grade?
-  attendance       Attendance[]
-
-  @@unique([userId, courseId])
-  @@map("enrollments")
-  @@index([userId])
-  @@index([courseId])
-  @@index([status])
-}
-
 enum EnrollmentStatus {
   PENDING
   CONFIRMED
@@ -170,75 +531,11 @@ enum EnrollmentStatus {
   REJECTED
 }
 
-// ============================================================================
-// ACADEMIC RECORDS & GRADES
-// ============================================================================
-
-model Grade {
-  id              Int          @id @default(autoincrement())
-  enrollmentId    Int          @unique @map("enrollment_id")
-  letterGrade     String?      @map("letter_grade") // A+, A, A-, B+, etc.
-  numericGrade    Float?       @map("numeric_grade") // 0-100
-  gradePoints     Float?       @map("grade_points") // 4.0 scale
-  status          GradeStatus  @default(IN_PROGRESS)
-  submittedBy     Int?         @map("submitted_by")
-  submittedAt     DateTime?    @map("submitted_at")
-  approvedBy      Int?         @map("approved_by")
-  approvedAt      DateTime?    @map("approved_at")
-  comments        String?      @db.Text
-
-  enrollment      Enrollment   @relation(fields: [enrollmentId], references: [id])
-  instructor      User?        @relation("GradesSubmitted", fields: [submittedBy], references: [id])
-  approver        User?        @relation("GradesApproved", fields: [approvedBy], references: [id])
-
-  @@map("grades")
-  @@index([enrollmentId])
-}
-
 enum GradeStatus {
   IN_PROGRESS
   SUBMITTED
   APPROVED
   PUBLISHED
-}
-
-model Transcript {
-  id              Int          @id @default(autoincrement())
-  userId          Int          @map("user_id")
-  semester        Semester
-  year            Int
-  gpa             Float
-  termGPA         Float        @map("term_gpa")
-  totalCredits    Float        @map("total_credits")
-  earnedCredits   Float        @map("earned_credits")
-  qualityPoints   Float        @map("quality_points")
-  academicStanding String      @map("academic_standing") // Good Standing, Probation, etc.
-  generatedAt     DateTime     @default(now()) @map("generated_at")
-
-  user            User         @relation(fields: [userId], references: [id])
-
-  @@unique([userId, semester, year])
-  @@map("transcripts")
-  @@index([userId])
-}
-
-// ============================================================================
-// DEGREE REQUIREMENTS & PLANNING
-// ============================================================================
-
-model Major {
-  id              Int          @id @default(autoincrement())
-  code            String       @unique
-  name            String
-  department      String
-  degree          DegreeType   // BS, BA, MS, etc.
-  totalCredits    Int          @map("total_credits")
-  description     String?      @db.Text
-
-  students        Student[]
-  requirements    Requirement[]
-
-  @@map("majors")
 }
 
 enum DegreeType {
@@ -249,86 +546,12 @@ enum DegreeType {
   PHD
 }
 
-model Requirement {
-  id              Int          @id @default(autoincrement())
-  majorId         Int          @map("major_id")
-  category        String       // Core, Elective, General Ed, etc.
-  name            String
-  credits         Int
-  courses         Json         // Array of acceptable course codes
-  description     String?      @db.Text
-
-  major           Major        @relation(fields: [majorId], references: [id])
-
-  @@map("requirements")
-  @@index([majorId])
-}
-
-model Student {
-  id              Int          @id @default(autoincrement())
-  userId          Int          @unique @map("user_id")
-  studentId       String       @unique @map("student_id")
-  majorId         Int?         @map("major_id")
-  minorId         Int?         @map("minor_id")
-  advisorId       Int?         @map("advisor_id")
-  year            Int          // 1, 2, 3, 4
-  expectedGrad    DateTime?    @map("expected_grad")
-  admissionDate   DateTime     @map("admission_date")
-  status          StudentStatus @default(ACTIVE)
-
-  user            User         @relation(fields: [userId], references: [id])
-  major           Major?       @relation(fields: [majorId], references: [id])
-  advisor         User?        @relation("StudentAdvisor", fields: [advisorId], references: [id])
-
-  @@map("students")
-  @@index([userId])
-  @@index([studentId])
-}
-
 enum StudentStatus {
   ACTIVE
   LEAVE_OF_ABSENCE
   WITHDRAWN
   SUSPENDED
   GRADUATED
-}
-
-// ============================================================================
-// FINANCIAL INFORMATION
-// ============================================================================
-
-model FinancialAccount {
-  id              Int          @id @default(autoincrement())
-  userId          Int          @unique @map("user_id")
-  balance         Float        @default(0)
-  tuitionDue      Float        @default(0) @map("tuition_due")
-  housingDue      Float        @default(0) @map("housing_due")
-  otherDue        Float        @default(0) @map("other_due")
-  lastUpdated     DateTime     @updatedAt @map("last_updated")
-
-  user            User         @relation(fields: [userId], references: [id])
-  charges         Charge[]
-  payments        Payment[]
-
-  @@map("financial_accounts")
-}
-
-model Charge {
-  id              Int              @id @default(autoincrement())
-  accountId       Int              @map("account_id")
-  semester        Semester?
-  year            Int?
-  type            ChargeType
-  description     String
-  amount          Float
-  dueDate         DateTime         @map("due_date")
-  isPaid          Boolean          @default(false) @map("is_paid")
-  createdAt       DateTime         @default(now()) @map("created_at")
-
-  account         FinancialAccount @relation(fields: [accountId], references: [id])
-
-  @@map("charges")
-  @@index([accountId])
 }
 
 enum ChargeType {
@@ -339,22 +562,6 @@ enum ChargeType {
   TECHNOLOGY_FEE
   LIBRARY_FEE
   OTHER
-}
-
-model Payment {
-  id              Int              @id @default(autoincrement())
-  accountId       Int              @map("account_id")
-  amount          Float
-  method          PaymentMethod
-  referenceNumber String           @map("reference_number")
-  status          PaymentStatus    @default(PENDING)
-  processedAt     DateTime?        @map("processed_at")
-  createdAt       DateTime         @default(now()) @map("created_at")
-
-  account         FinancialAccount @relation(fields: [accountId], references: [id])
-
-  @@map("payments")
-  @@index([accountId])
 }
 
 enum PaymentMethod {
@@ -372,33 +579,6 @@ enum PaymentStatus {
   COMPLETED
   FAILED
   REFUNDED
-}
-
-// ============================================================================
-// ACADEMIC APPLICATIONS & PETITIONS
-// ============================================================================
-
-model Application {
-  id              Int              @id @default(autoincrement())
-  userId          Int              @map("user_id")
-  type            ApplicationType
-  semester        Semester?
-  year            Int?
-  status          ApplicationStatus @default(PENDING)
-  requestedDate   DateTime         @default(now()) @map("requested_date")
-  reason          String           @db.Text
-  supportingDocs  Json?            @map("supporting_docs") // Array of file URLs
-  reviewedBy      Int?             @map("reviewed_by")
-  reviewedAt      DateTime?        @map("reviewed_at")
-  reviewNotes     String?          @db.Text @map("review_notes")
-  decision        String?
-
-  user            User             @relation("UserApplications", fields: [userId], references: [id])
-  reviewer        User?            @relation("ReviewedApplications", fields: [reviewedBy], references: [id])
-
-  @@map("applications")
-  @@index([userId])
-  @@index([status])
 }
 
 enum ApplicationType {
@@ -421,113 +601,11 @@ enum ApplicationStatus {
   WITHDRAWN
 }
 
-// ============================================================================
-// PERSONAL INFORMATION
-// ============================================================================
-
-model PersonalInfo {
-  id              Int          @id @default(autoincrement())
-  userId          Int          @unique @map("user_id")
-
-  // Contact Information
-  phoneNumber     String?      @map("phone_number")
-  alternatePhone  String?      @map("alternate_phone")
-  permanentAddress String?     @db.Text @map("permanent_address")
-  mailingAddress  String?      @db.Text @map("mailing_address")
-  city            String?
-  state           String?
-  postalCode      String?      @map("postal_code")
-  country         String?      @default("China")
-
-  // Emergency Contact
-  emergencyName   String?      @map("emergency_name")
-  emergencyRelation String?    @map("emergency_relation")
-  emergencyPhone  String?      @map("emergency_phone")
-  emergencyEmail  String?      @map("emergency_email")
-
-  // Personal Details
-  dateOfBirth     DateTime?    @map("date_of_birth")
-  gender          String?
-  nationality     String?
-  idNumber        String?      @map("id_number") // National ID or passport
-
-  // Academic Background
-  highSchool      String?      @map("high_school")
-  highSchoolGrad  DateTime?    @map("high_school_grad")
-
-  updatedAt       DateTime     @updatedAt @map("updated_at")
-
-  user            User         @relation(fields: [userId], references: [id])
-
-  @@map("personal_info")
-}
-
-// ============================================================================
-// INSTRUCTOR/FACULTY DATA
-// ============================================================================
-
-model Faculty {
-  id              Int          @id @default(autoincrement())
-  userId          Int          @unique @map("user_id")
-  employeeId      String       @unique @map("employee_id")
-  title           String       // Professor, Associate Professor, etc.
-  department      String
-  office          String?
-  officeHours     Json?        @map("office_hours") // Array of time slots
-  researchAreas   Json?        @map("research_areas") // Array of research interests
-  bio             String?      @db.Text
-  cvUrl           String?      @map("cv_url")
-
-  user            User         @relation(fields: [userId], references: [id])
-
-  @@map("faculty")
-  @@index([userId])
-}
-
-model Attendance {
-  id              Int              @id @default(autoincrement())
-  enrollmentId    Int              @map("enrollment_id")
-  date            DateTime
-  status          AttendanceStatus
-  notes           String?
-  markedBy        Int              @map("marked_by")
-
-  enrollment      Enrollment       @relation(fields: [enrollmentId], references: [id])
-  instructor      User             @relation(fields: [markedBy], references: [id])
-
-  @@unique([enrollmentId, date])
-  @@map("attendance")
-  @@index([enrollmentId])
-}
-
 enum AttendanceStatus {
   PRESENT
   ABSENT
   LATE
   EXCUSED
-}
-
-// ============================================================================
-// CAMPUS INFORMATION & RESOURCES
-// ============================================================================
-
-model Announcement {
-  id              Int              @id @default(autoincrement())
-  title           String
-  content         String           @db.Text
-  type            AnnouncementType
-  priority        Priority         @default(NORMAL)
-  targetAudience  Json             @map("target_audience") // Array of roles: ["STUDENT", "FACULTY", "ALL"]
-  publishDate     DateTime         @default(now()) @map("publish_date")
-  expiryDate      DateTime?        @map("expiry_date")
-  isActive        Boolean          @default(true) @map("is_active")
-  createdBy       Int              @map("created_by")
-  attachments     Json?
-
-  author          User             @relation(fields: [createdBy], references: [id])
-
-  @@map("announcements")
-  @@index([isActive, publishDate])
 }
 
 enum AnnouncementType {
@@ -545,26 +623,6 @@ enum Priority {
   URGENT
 }
 
-model Event {
-  id              Int          @id @default(autoincrement())
-  title           String
-  description     String       @db.Text
-  location        String
-  startTime       DateTime     @map("start_time")
-  endTime         DateTime     @map("end_time")
-  category        EventCategory
-  organizer       String
-  registrationUrl String?      @map("registration_url")
-  capacity        Int?
-  registered      Int          @default(0)
-  isPublic        Boolean      @default(true) @map("is_public")
-  createdAt       DateTime     @default(now()) @map("created_at")
-
-  @@map("events")
-  @@index([startTime])
-  @@index([category])
-}
-
 enum EventCategory {
   ACADEMIC
   CULTURAL
@@ -573,30 +631,6 @@ enum EventCategory {
   SOCIAL
   CAREER
   OTHER
-}
-
-// ============================================================================
-// COURSE MATERIALS & RESOURCES
-// ============================================================================
-
-model CourseMaterial {
-  id              Int          @id @default(autoincrement())
-  courseId        Int          @map("course_id")
-  title           String
-  description     String?      @db.Text
-  type            MaterialType // Syllabus, Lecture Notes, Assignment, etc.
-  fileUrl         String       @map("file_url")
-  fileName        String       @map("file_name")
-  fileSize        Int?         @map("file_size")
-  uploadedBy      Int          @map("uploaded_by")
-  uploadedAt      DateTime     @default(now()) @map("uploaded_at")
-  isVisible       Boolean      @default(true) @map("is_visible")
-
-  course          Course       @relation(fields: [courseId], references: [id])
-  uploader        User         @relation(fields: [uploadedBy], references: [id])
-
-  @@map("course_materials")
-  @@index([courseId])
 }
 
 enum MaterialType {
@@ -608,28 +642,4 @@ enum MaterialType {
   SOLUTION
   RECORDING
   OTHER
-}
-
-// ============================================================================
-// AUDIT LOG MODEL
-// ============================================================================
-
-model AuditLog {
-  id         Int      @id @default(autoincrement())
-  userId     Int      @map("user_id")
-  action     String
-  entityType String   @map("entity_type")
-  entityId   Int      @map("entity_id")
-  changes    Json?
-  ipAddress  String?  @map("ip_address")
-  timestamp  DateTime @default(now())
-
-  // Relations
-  user       User     @relation(fields: [userId], references: [id])
-
-  @@map("audit_logs")
-  @@index([userId])
-  @@index([action])
-  @@index([timestamp])
-  @@index([entityType, entityId])
 }

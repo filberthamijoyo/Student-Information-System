@@ -68,7 +68,7 @@ const AddDropCourse: React.FC<AddDropCourseProps> = ({ currentUser }) => {
   const loadMyRequests = async () => {
     try {
       setLoading(true);
-      const requests = await addDropService.getMyRequests(currentUser.id);
+      const requests = await addDropService.getMyRequests();
       setMyRequests(requests);
     } catch (err) {
       console.error('Failed to load requests:', err);

@@ -1,9 +1,9 @@
 import { Response } from 'express';
 import { pool, getClient } from '../config/database';
 import { AuthRequest } from '../types/express.types';
-import { CourseCreateRequest, CourseUpdateRequest, TimeSlotCreateRequest } from '../types/course.types';
+import { CourseCreateRequest, CourseUpdateRequest } from '../types/course.types';
 import { BadRequestError, NotFoundError, ConflictError } from '../middleware/errorHandler';
-import { deleteCached, deleteCachedPattern, CACHE_KEYS } from '../config/redis';
+import { deleteCached, CACHE_KEYS } from '../config/redis';
 
 /**
  * Create a new course
@@ -250,7 +250,7 @@ export const getAllUsers = async (req: AuthRequest, res: Response): Promise<void
  * Get system statistics
  * GET /api/admin/statistics
  */
-export const getSystemStatistics = async (req: AuthRequest, res: Response): Promise<void> => {
+export const getSystemStatistics = async (_req: AuthRequest, res: Response): Promise<void> => {
   try {
     // TODO: Implement comprehensive statistics
     // - Total users by role

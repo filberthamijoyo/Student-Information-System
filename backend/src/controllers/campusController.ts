@@ -1,6 +1,6 @@
 import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth';
-import prisma from '../config/database';
+import prisma from '../config/prisma';
 import { AppError } from '../utils/errors';
 
 /**
@@ -12,32 +12,32 @@ export async function getAnnouncements(req: AuthRequest, res: Response) {
 
     const now = new Date();
 
-    const announcements = await prisma.announcement.findMany({
+    const announcements = await prisma.announcements.findMany({
       where: {
-        isActive: true,
-        publishDate: { lte: now },
+        is_active: true,
+        publish_date: { lte: now },
         OR: [
-          { expiryDate: null },
-          { expiryDate: { gte: now } },
+          { expiry_date: null },
+          { expiry_date: { gte: now } },
         ],
       },
       include: {
-        author: {
+        users: {
           select: {
-            fullName: true,
+            full_name: true,
             role: true,
           },
         },
       },
       orderBy: [
         { priority: 'desc' },
-        { publishDate: 'desc' },
+        { publish_date: 'desc' },
       ],
     });
 
     // Filter based on target audience
     const filteredAnnouncements = announcements.filter(announcement => {
-      const targetAudience = announcement.targetAudience as string[];
+      const targetAudience = announcement.target_audience as string[];
       return targetAudience.includes('ALL') || targetAudience.includes(user.role);
     });
 
@@ -49,9 +49,9 @@ export async function getAnnouncements(req: AuthRequest, res: Response) {
         content: a.content,
         type: a.type,
         priority: a.priority,
-        publishDate: a.publishDate,
-        expiryDate: a.expiryDate,
-        author: a.author.fullName,
+        publishDate: a.publish_date,
+        expiryDate: a.expiry_date,
+        author: a.users?.full_name || 'Unknown',
         attachments: a.attachments,
       })),
     });
@@ -71,12 +71,12 @@ export async function getAnnouncement(req: AuthRequest, res: Response) {
   try {
     const { id } = req.params;
 
-    const announcement = await prisma.announcement.findUnique({
+    const announcement = await prisma.announcements.findUnique({
       where: { id: parseInt(id) },
       include: {
-        author: {
+        users: {
           select: {
-            fullName: true,
+            full_name: true,
             role: true,
           },
         },
@@ -115,7 +115,7 @@ export async function getEvents(req: AuthRequest, res: Response) {
     const { category, startDate, endDate } = req.query;
 
     const where: any = {
-      isPublic: true,
+      is_public: true,
     };
 
     if (category) {
@@ -123,21 +123,21 @@ export async function getEvents(req: AuthRequest, res: Response) {
     }
 
     if (startDate) {
-      where.startTime = {
+      where.start_time = {
         gte: new Date(startDate as string),
       };
     }
 
     if (endDate) {
-      where.endTime = {
+      where.end_time = {
         lte: new Date(endDate as string),
       };
     }
 
-    const events = await prisma.event.findMany({
+    const events = await prisma.events.findMany({
       where,
       orderBy: {
-        startTime: 'asc',
+        start_time: 'asc',
       },
     });
 
@@ -157,22 +157,22 @@ export async function getEvents(req: AuthRequest, res: Response) {
 /**
  * Get upcoming events
  */
-export async function getUpcomingEvents(req: AuthRequest, res: Response) {
+export async function getUpcomingEvents(_req: AuthRequest, res: Response) {
   try {
     const now = new Date();
     const thirtyDaysLater = new Date();
     thirtyDaysLater.setDate(now.getDate() + 30);
 
-    const events = await prisma.event.findMany({
+    const events = await prisma.events.findMany({
       where: {
-        isPublic: true,
-        startTime: {
+        is_public: true,
+        start_time: {
           gte: now,
           lte: thirtyDaysLater,
         },
       },
       orderBy: {
-        startTime: 'asc',
+        start_time: 'asc',
       },
       take: 10,
     });
@@ -196,9 +196,8 @@ export async function getUpcomingEvents(req: AuthRequest, res: Response) {
 export async function registerForEvent(req: AuthRequest, res: Response) {
   try {
     const { id } = req.params;
-    const userId = req.user!.id;
 
-    const event = await prisma.event.findUnique({
+    const event = await prisma.events.findUnique({
       where: { id: parseInt(id) },
     });
 
@@ -212,7 +211,7 @@ export async function registerForEvent(req: AuthRequest, res: Response) {
 
     // In a full implementation, we'd create an EventRegistration model
     // For now, just increment the registered count
-    await prisma.event.update({
+    await prisma.events.update({
       where: { id: parseInt(id) },
       data: {
         registered: {

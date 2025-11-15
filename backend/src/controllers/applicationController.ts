@@ -1,8 +1,7 @@
 import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth';
-import prisma from '../config/database';
+import prisma from '../config/prisma';
 import { AppError } from '../utils/errors';
-import { Role } from '@prisma/client';
 
 /**
  * Get all applications for the authenticated user
@@ -11,10 +10,10 @@ export async function getMyApplications(req: AuthRequest, res: Response) {
   try {
     const userId = req.user!.id;
 
-    const applications = await prisma.application.findMany({
-      where: { userId },
+    const applications = await prisma.applications.findMany({
+      where: { user_id: userId },
       orderBy: {
-        requestedDate: 'desc',
+        requested_date: 'desc',
       },
     });
 
@@ -43,14 +42,14 @@ export async function submitApplication(req: AuthRequest, res: Response) {
       throw new AppError('Type and reason are required', 400);
     }
 
-    const application = await prisma.application.create({
+    const application = await prisma.applications.create({
       data: {
-        userId,
+        user_id: userId,
         type,
         semester: semester || null,
         year: year ? parseInt(year) : null,
         reason,
-        supportingDocs: supportingDocs || null,
+        supporting_docs: supportingDocs || null,
         status: 'PENDING',
       },
     });
@@ -84,15 +83,15 @@ export async function getApplication(req: AuthRequest, res: Response) {
     const userId = req.user!.id;
     const { id } = req.params;
 
-    const application = await prisma.application.findFirst({
+    const application = await prisma.applications.findFirst({
       where: {
         id: parseInt(id),
-        userId,
+        user_id: userId,
       },
       include: {
-        reviewer: {
+        users_applications_reviewed_byTousers: {
           select: {
-            fullName: true,
+            full_name: true,
             email: true,
           },
         },
@@ -131,10 +130,10 @@ export async function withdrawApplication(req: AuthRequest, res: Response) {
     const userId = req.user!.id;
     const { id } = req.params;
 
-    const application = await prisma.application.findFirst({
+    const application = await prisma.applications.findFirst({
       where: {
         id: parseInt(id),
-        userId,
+        user_id: userId,
       },
     });
 
@@ -146,7 +145,7 @@ export async function withdrawApplication(req: AuthRequest, res: Response) {
       throw new AppError('Cannot withdraw application in current status', 400);
     }
 
-    const updatedApplication = await prisma.application.update({
+    const updatedApplication = await prisma.applications.update({
       where: { id: parseInt(id) },
       data: { status: 'WITHDRAWN' },
     });
@@ -179,25 +178,25 @@ export async function getPendingApplications(req: AuthRequest, res: Response) {
   try {
     const user = req.user!;
 
-    if (user.role !== Role.ADMINISTRATOR) {
+    if (user.role !== 'administrator') {
       throw new AppError('Unauthorized', 403);
     }
 
-    const applications = await prisma.application.findMany({
+    const applications = await prisma.applications.findMany({
       where: {
         status: {
           in: ['PENDING', 'UNDER_REVIEW'],
         },
       },
       include: {
-        user: {
+        users_applications_user_idTousers: {
           select: {
-            fullName: true,
+            full_name: true,
             email: true,
-            student: {
+            students_students_user_idTousers: {
               select: {
-                studentId: true,
-                major: {
+                student_id: true,
+                majors: {
                   select: {
                     name: true,
                   },
@@ -208,7 +207,7 @@ export async function getPendingApplications(req: AuthRequest, res: Response) {
         },
       },
       orderBy: {
-        requestedDate: 'asc',
+        requested_date: 'asc',
       },
     });
 
@@ -241,7 +240,7 @@ export async function reviewApplication(req: AuthRequest, res: Response) {
     const { id } = req.params;
     const { status, decision, reviewNotes } = req.body;
 
-    if (user.role !== Role.ADMINISTRATOR) {
+    if (user.role !== 'administrator') {
       throw new AppError('Unauthorized', 403);
     }
 
@@ -249,7 +248,7 @@ export async function reviewApplication(req: AuthRequest, res: Response) {
       throw new AppError('Status and decision are required', 400);
     }
 
-    const application = await prisma.application.findUnique({
+    const application = await prisma.applications.findUnique({
       where: { id: parseInt(id) },
     });
 
@@ -257,19 +256,19 @@ export async function reviewApplication(req: AuthRequest, res: Response) {
       throw new AppError('Application not found', 404);
     }
 
-    const updatedApplication = await prisma.application.update({
+    const updatedApplication = await prisma.applications.update({
       where: { id: parseInt(id) },
       data: {
         status,
         decision,
-        reviewNotes: reviewNotes || null,
-        reviewedBy: user.id,
-        reviewedAt: new Date(),
+        review_notes: reviewNotes || null,
+        reviewed_by: user.id,
+        reviewed_at: new Date(),
       },
       include: {
-        user: {
+        users_applications_user_idTousers: {
           select: {
-            fullName: true,
+            full_name: true,
             email: true,
           },
         },

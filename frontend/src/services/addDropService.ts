@@ -21,8 +21,8 @@ export const addDropService = {
     return response.data.data;
   },
 
-  async getMyRequests(studentId: number): Promise<AddDropRequest[]> {
-    const response = await axios.get(`${API_BASE_URL}/add-drop/my-requests/${studentId}`, {
+  async getMyRequests(): Promise<AddDropRequest[]> {
+    const response = await axios.get(`${API_BASE_URL}/add-drop/my-requests`, {
       headers: getAuthHeader()
     });
     return response.data.data;

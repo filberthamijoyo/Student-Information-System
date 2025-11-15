@@ -42,7 +42,7 @@ export function StudentDashboard() {
 
   const { data: myAddDropRequests } = useQuery({
     queryKey: ['my-add-drop-requests', user?.id],
-    queryFn: () => addDropService.getMyRequests(user!.id),
+    queryFn: () => addDropService.getMyRequests(),
     enabled: !!user,
   });
 

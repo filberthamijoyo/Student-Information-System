@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
-import { AuthRequest } from '../middleware/auth';
-import { query } from '../config/database';
+import { Prisma } from '@prisma/client';
+import prisma from '../config/prisma';
 
 /**
  * Get academic events with optional filtering
@@ -9,29 +9,33 @@ export async function getEvents(req: Request, res: Response) {
   try {
     const { term, year } = req.query;
 
-    let queryText = 'SELECT * FROM academic_events WHERE 1=1';
-    const params: any[] = [];
-    let paramCount = 1;
+    const filters: Prisma.Sql[] = [];
 
     if (term) {
-      queryText += ` AND term = $${paramCount}`;
-      params.push(term);
-      paramCount++;
+      filters.push(Prisma.sql`term = ${term}`);
     }
 
     if (year) {
-      queryText += ` AND year = $${paramCount}`;
-      params.push(parseInt(year as string));
-      paramCount++;
+      filters.push(Prisma.sql`year = ${parseInt(year as string, 10)}`);
     }
 
-    queryText += ' ORDER BY start_date ASC';
+    const whereClause =
+      filters.length > 0
+        ? Prisma.sql`WHERE ${Prisma.join(filters, ' AND ')}`
+        : Prisma.sql``;
 
-    const result = await query(queryText, params);
+    const events = await prisma.$queryRaw<
+      Array<Record<string, unknown>>
+    >(Prisma.sql`
+      SELECT *
+      FROM academic_events
+      ${whereClause}
+      ORDER BY start_date ASC
+    `);
 
     res.status(200).json({
       success: true,
-      data: result.rows,
+      data: events,
     });
   } catch (error) {
     console.error('Get events error:', error);
@@ -45,24 +49,25 @@ export async function getEvents(req: Request, res: Response) {
 /**
  * Check if add/drop period is currently open
  */
-export async function getAddDropStatus(req: Request, res: Response) {
+export async function getAddDropStatus(_req: Request, res: Response): Promise<void> {
   try {
-    const queryText = `
-      SELECT * FROM academic_events
+    const rows = await prisma.$queryRaw<
+      Array<Record<string, unknown>>
+    >(Prisma.sql`
+      SELECT *
+      FROM academic_events
       WHERE event_type = 'ADD_DROP'
-      AND CURRENT_DATE BETWEEN start_date AND end_date
+        AND CURRENT_DATE BETWEEN start_date AND end_date
       ORDER BY start_date DESC
       LIMIT 1
-    `;
+    `);
 
-    const result = await query(queryText);
-
-    if (result.rows.length > 0) {
+    if (rows.length > 0) {
       res.status(200).json({
         success: true,
         data: {
           isOpen: true,
-          period: result.rows[0],
+          period: rows[0],
         },
       });
     } else {
@@ -74,8 +79,21 @@ export async function getAddDropStatus(req: Request, res: Response) {
         },
       });
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error('Get add/drop status error:', error);
+    
+    // If table doesn't exist, return closed status
+    if (error.code === '42P01' || error.message?.includes('does not exist')) {
+      res.status(200).json({
+        success: true,
+        data: {
+          isOpen: false,
+          period: null,
+        },
+      });
+      return;
+    }
+    
     res.status(500).json({
       success: false,
       error: 'Failed to check add/drop status',
@@ -86,25 +104,36 @@ export async function getAddDropStatus(req: Request, res: Response) {
 /**
  * Get upcoming events
  */
-export async function getUpcomingEvents(req: Request, res: Response) {
+export async function getUpcomingEvents(req: Request, res: Response): Promise<void> {
   try {
-    const limit = parseInt(req.query.limit as string) || 5;
+    const limit = Number.parseInt(req.query.limit as string, 10) || 5;
 
-    const queryText = `
-      SELECT * FROM academic_events
+    const events = await prisma.$queryRaw<
+      Array<Record<string, unknown>>
+    >(Prisma.sql`
+      SELECT *
+      FROM academic_events
       WHERE start_date >= CURRENT_DATE
       ORDER BY start_date ASC
-      LIMIT $1
-    `;
-
-    const result = await query(queryText, [limit]);
+      LIMIT ${limit}
+    `);
 
     res.status(200).json({
       success: true,
-      data: result.rows,
+      data: events,
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Get upcoming events error:', error);
+    
+    // If table doesn't exist, return empty array
+    if (error.code === '42P01' || error.message?.includes('does not exist')) {
+      res.status(200).json({
+        success: true,
+        data: [],
+      });
+      return;
+    }
+    
     res.status(500).json({
       success: false,
       error: 'Failed to fetch upcoming events',
@@ -119,32 +148,28 @@ export async function getHolidays(req: Request, res: Response) {
   try {
     const { term, year } = req.query;
 
-    let queryText = `
-      SELECT * FROM academic_events
-      WHERE event_type = 'HOLIDAY'
-    `;
-    const params: any[] = [];
-    let paramCount = 1;
+    const filters: Prisma.Sql[] = [Prisma.sql`event_type = 'HOLIDAY'`];
 
     if (term) {
-      queryText += ` AND term = $${paramCount}`;
-      params.push(term);
-      paramCount++;
+      filters.push(Prisma.sql`term = ${term}`);
     }
 
     if (year) {
-      queryText += ` AND year = $${paramCount}`;
-      params.push(parseInt(year as string));
-      paramCount++;
+      filters.push(Prisma.sql`year = ${parseInt(year as string, 10)}`);
     }
 
-    queryText += ' ORDER BY start_date ASC';
-
-    const result = await query(queryText, params);
+    const holidays = await prisma.$queryRaw<
+      Array<Record<string, unknown>>
+    >(Prisma.sql`
+      SELECT *
+      FROM academic_events
+      WHERE ${Prisma.join(filters, ' AND ')}
+      ORDER BY start_date ASC
+    `);
 
     res.status(200).json({
       success: true,
-      data: result.rows,
+      data: holidays,
     });
   } catch (error) {
     console.error('Get holidays error:', error);

@@ -8,23 +8,17 @@ import { ValidationError } from '../utils/errors';
  * Implements queue-based enrollment with optimistic locking to prevent race conditions
  */
 
-export interface EnrollmentJobData {
-  userId: number;
-  courseId: number;
-  timestamp: Date;
-}
-
 /**
  * Queue an enrollment request
  * This prevents direct database writes and ensures sequential processing
  */
 export async function queueEnrollment(userId: number, courseId: number) {
   // Check if user already has an enrollment for this course
-  const existingEnrollment = await prisma.enrollment.findUnique({
+  const existingEnrollment = await prisma.enrollments.findUnique({
     where: {
-      userId_courseId: {
-        userId,
-        courseId
+      user_id_course_id: {
+        user_id: userId,
+        course_id: courseId
       }
     }
   });
@@ -42,9 +36,9 @@ export async function queueEnrollment(userId: number, courseId: number) {
   }
 
   // Check course exists
-  const course = await prisma.course.findUnique({
+  const course = await prisma.courses.findUnique({
     where: { id: courseId },
-    select: { id: true, courseCode: true, courseName: true, status: true }
+    select: { id: true, course_code: true, course_name: true, status: true }
   });
 
   if (!course) {
@@ -58,8 +52,9 @@ export async function queueEnrollment(userId: number, courseId: number) {
   // Add to queue
   const job = await enrollmentQueue.add(
     {
-      userId,
-      courseId,
+      student_id: userId,
+      course_id: courseId,
+      attempt: 1,
       timestamp: new Date()
     },
     {
@@ -87,13 +82,13 @@ export async function queueEnrollment(userId: number, courseId: number) {
 export async function processEnrollment(userId: number, courseId: number) {
   return await prisma.$transaction(async (tx) => {
     // 1. Lock and fetch the course with current version
-    const course = await tx.course.findUnique({
+    const course = await tx.courses.findUnique({
       where: { id: courseId },
       include: {
-        timeSlots: true,
-        instructor: {
+        time_slots: true,
+        users: {
           select: {
-            fullName: true
+            full_name: true
           }
         }
       }
@@ -108,7 +103,7 @@ export async function processEnrollment(userId: number, courseId: number) {
     }
 
     // 2. Fetch user
-    const user = await tx.user.findUnique({
+    const user = await tx.users.findUnique({
       where: { id: userId }
     });
 
@@ -117,11 +112,11 @@ export async function processEnrollment(userId: number, courseId: number) {
     }
 
     // 2b. Check for existing enrollment (prevents duplicate enrollments on retry)
-    const existingEnrollment = await tx.enrollment.findUnique({
+    const existingEnrollment = await tx.enrollments.findUnique({
       where: {
-        userId_courseId: {
-          userId,
-          courseId
+        user_id_course_id: {
+          user_id: userId,
+          course_id: courseId
         }
       }
     });
@@ -138,7 +133,7 @@ export async function processEnrollment(userId: number, courseId: number) {
       }
       if (existingEnrollment.status === EnrollmentStatus.REJECTED) {
         // Delete rejected enrollment so we can try again
-        await tx.enrollment.delete({
+        await tx.enrollments.delete({
           where: { id: existingEnrollment.id }
         });
       }
@@ -147,29 +142,29 @@ export async function processEnrollment(userId: number, courseId: number) {
     // 3. Check prerequisites
     if (course.prerequisites) {
       // Parse prerequisites (comma-separated course codes)
-      const requiredCourses = course.prerequisites.split(',').map(c => c.trim());
+      const requiredCourses = course.prerequisites.split(',').map((c: string) => c.trim());
 
-      const completedCourses = await tx.enrollment.findMany({
+      const completedCourses = await tx.enrollments.findMany({
         where: {
-          userId,
+          user_id: userId,
           status: EnrollmentStatus.CONFIRMED,
-          grade: {
-            not: null
+          grades: {
+            isNot: null
           }
         },
         include: {
-          course: {
+          courses: {
             select: {
-              courseCode: true
+              course_code: true
             }
           }
         }
       });
 
-      const completedCourseCodes = completedCourses.map(e => e.course.courseCode);
+      const completedCourseCodes = completedCourses.map((e: any) => e.courses.course_code);
 
       const missingPrereqs = requiredCourses.filter(
-        req => !completedCourseCodes.includes(req)
+        (req: string) => !completedCourseCodes.includes(req)
       );
 
       if (missingPrereqs.length > 0) {
@@ -178,32 +173,33 @@ export async function processEnrollment(userId: number, courseId: number) {
     }
 
     // 4. Check time conflicts
-    const userEnrollments = await tx.enrollment.findMany({
+    const userEnrollments = await tx.enrollments.findMany({
       where: {
-        userId,
+        user_id: userId,
         status: EnrollmentStatus.CONFIRMED
       },
       include: {
-        course: {
+        courses: {
           include: {
-            timeSlots: true
+            time_slots: true
           }
         }
       }
     });
 
     const hasConflict = checkTimeConflict(
-      userEnrollments.flatMap(e => e.course.timeSlots),
-      course.timeSlots
+      userEnrollments.flatMap((e: any) => e.courses.time_slots),
+      course.time_slots
     );
 
     if (hasConflict) {
       // Create rejected enrollment
-      const enrollment = await tx.enrollment.create({
+      const enrollment = await tx.enrollments.create({
         data: {
-          userId,
-          courseId,
-          status: EnrollmentStatus.REJECTED
+          user_id: userId,
+          course_id: courseId,
+          status: EnrollmentStatus.REJECTED,
+          updated_at: new Date()
         }
       });
 
@@ -215,17 +211,17 @@ export async function processEnrollment(userId: number, courseId: number) {
     }
 
     // 5. Check credit limit (optional business rule)
-    const currentSemesterEnrollments = await tx.enrollment.findMany({
+    const currentSemesterEnrollments = await tx.enrollments.findMany({
       where: {
-        userId,
+        user_id: userId,
         status: EnrollmentStatus.CONFIRMED,
-        course: {
+        courses: {
           semester: course.semester,
           year: course.year
         }
       },
       include: {
-        course: {
+        courses: {
           select: {
             credits: true
           }
@@ -234,7 +230,7 @@ export async function processEnrollment(userId: number, courseId: number) {
     });
 
     const currentCredits = currentSemesterEnrollments.reduce(
-      (sum, e) => sum + e.course.credits,
+      (sum: number, e: any) => sum + e.courses.credits,
       0
     );
 
@@ -245,27 +241,28 @@ export async function processEnrollment(userId: number, courseId: number) {
     }
 
     // 6. Check capacity with optimistic locking
-    if (course.currentEnrollment >= course.maxCapacity) {
+    if (course.current_enrollment >= course.max_capacity) {
       // Add to waitlist
-      const waitlistCount = await tx.enrollment.count({
+      const waitlistCount = await tx.enrollments.count({
         where: {
-          courseId,
+          course_id: courseId,
           status: EnrollmentStatus.WAITLISTED
         }
       });
 
-      const enrollment = await tx.enrollment.create({
+      const enrollment = await tx.enrollments.create({
         data: {
-          userId,
-          courseId,
+          user_id: userId,
+          course_id: courseId,
           status: EnrollmentStatus.WAITLISTED,
-          waitlistPosition: waitlistCount + 1
+          waitlist_position: waitlistCount + 1,
+          updated_at: new Date()
         },
         include: {
-          course: {
+          courses: {
             select: {
-              courseCode: true,
-              courseName: true
+              course_code: true,
+              course_name: true
             }
           }
         }
@@ -273,31 +270,31 @@ export async function processEnrollment(userId: number, courseId: number) {
 
       await createAuditLog(tx, userId, 'WAITLISTED', enrollment.id, {
         courseId,
-        waitlistPosition: enrollment.waitlistPosition
+        waitlistPosition: enrollment.waitlist_position
       });
 
       return {
         success: true,
         status: 'WAITLISTED',
         enrollment,
-        message: `You have been added to the waitlist at position ${enrollment.waitlistPosition}`
+        message: `You have been added to the waitlist at position ${enrollment.waitlist_position}`
       };
     }
 
     // 7. Enroll with version check (optimistic locking)
-    const updatedCourse = await tx.course.updateMany({
+    const updatedCourse = await tx.courses.updateMany({
       where: {
         id: courseId,
         version: course.version // Optimistic locking check
       },
       data: {
-        currentEnrollment: {
+        current_enrollment: {
           increment: 1
         },
         version: {
           increment: 1
         },
-        status: course.currentEnrollment + 1 >= course.maxCapacity ? 'FULL' : course.status
+        status: course.current_enrollment + 1 >= course.max_capacity ? 'FULL' : course.status
       }
     });
 
@@ -307,21 +304,22 @@ export async function processEnrollment(userId: number, courseId: number) {
     }
 
     // 8. Create confirmed enrollment
-    const enrollment = await tx.enrollment.create({
+    const enrollment = await tx.enrollments.create({
       data: {
-        userId,
-        courseId,
-        status: EnrollmentStatus.CONFIRMED
+        user_id: userId,
+        course_id: courseId,
+        status: EnrollmentStatus.CONFIRMED,
+        updated_at: new Date()
       },
       include: {
-        course: {
+        courses: {
           select: {
-            courseCode: true,
-            courseName: true,
+            course_code: true,
+            course_name: true,
             credits: true,
-            instructor: {
+            users: {
               select: {
-                fullName: true
+                full_name: true
               }
             }
           }
@@ -332,7 +330,7 @@ export async function processEnrollment(userId: number, courseId: number) {
     // 9. Create audit log
     await createAuditLog(tx, userId, 'ENROLL', enrollment.id, {
       courseId,
-      courseCode: course.courseCode,
+      courseCode: course.course_code,
       status: 'CONFIRMED'
     });
 
@@ -354,13 +352,13 @@ export async function processEnrollment(userId: number, courseId: number) {
  */
 export async function dropEnrollment(enrollmentId: number, userId: number) {
   return await prisma.$transaction(async (tx) => {
-    const enrollment = await tx.enrollment.findFirst({
+    const enrollment = await tx.enrollments.findFirst({
       where: {
         id: enrollmentId,
-        userId
+        user_id: userId
       },
       include: {
-        course: true
+        courses: true
       }
     });
 
@@ -373,17 +371,17 @@ export async function dropEnrollment(enrollmentId: number, userId: number) {
     }
 
     // Update enrollment status to DROPPED
-    await tx.enrollment.update({
+    await tx.enrollments.update({
       where: { id: enrollmentId },
       data: { status: EnrollmentStatus.DROPPED }
     });
 
     // If was confirmed, decrement course enrollment and process waitlist
     if (enrollment.status === EnrollmentStatus.CONFIRMED) {
-      await tx.course.update({
-        where: { id: enrollment.courseId },
+      await tx.courses.update({
+        where: { id: enrollment.course_id },
         data: {
-          currentEnrollment: {
+          current_enrollment: {
             decrement: 1
           },
           version: {
@@ -394,13 +392,13 @@ export async function dropEnrollment(enrollmentId: number, userId: number) {
       });
 
       // Promote next waitlisted student
-      await promoteFromWaitlist(tx, enrollment.courseId);
+      await promoteFromWaitlist(tx, enrollment.course_id);
     }
 
     // Create audit log
     await createAuditLog(tx, userId, 'DROP', enrollmentId, {
-      courseId: enrollment.courseId,
-      courseCode: enrollment.course.courseCode
+      courseId: enrollment.course_id,
+      courseCode: enrollment.courses.course_code
     });
 
     return {
@@ -414,27 +412,27 @@ export async function dropEnrollment(enrollmentId: number, userId: number) {
  * Get user's enrollments
  */
 export async function getUserEnrollments(userId: number) {
-  const enrollments = await prisma.enrollment.findMany({
+  const enrollments = await prisma.enrollments.findMany({
     where: {
-      userId,
+      user_id: userId,
       status: {
         in: [EnrollmentStatus.CONFIRMED, EnrollmentStatus.PENDING, EnrollmentStatus.WAITLISTED]
       }
     },
     include: {
-      course: {
+      courses: {
         include: {
-          instructor: {
+          users: {
             select: {
-              fullName: true
+              full_name: true
             }
           },
-          timeSlots: true
+          time_slots: true
         }
       }
     },
     orderBy: {
-      enrolledAt: 'desc'
+      enrolled_at: 'desc'
     }
   });
 
@@ -483,11 +481,11 @@ export async function getEnrollmentJobStatus(jobId: string) {
 function checkTimeConflict(existingSlots: any[], newSlots: any[]): boolean {
   for (const existing of existingSlots) {
     for (const newSlot of newSlots) {
-      if (existing.dayOfWeek === newSlot.dayOfWeek) {
-        const existingStart = timeToMinutes(existing.startTime);
-        const existingEnd = timeToMinutes(existing.endTime);
-        const newStart = timeToMinutes(newSlot.startTime);
-        const newEnd = timeToMinutes(newSlot.endTime);
+      if (existing.day_of_week === newSlot.day_of_week) {
+        const existingStart = timeToMinutes(existing.start_time);
+        const existingEnd = timeToMinutes(existing.end_time);
+        const newStart = timeToMinutes(newSlot.start_time);
+        const newEnd = timeToMinutes(newSlot.end_time);
 
         // Check for overlap
         if (
@@ -516,31 +514,31 @@ function timeToMinutes(time: string): number {
  * Helper: Promote next student from waitlist
  */
 async function promoteFromWaitlist(tx: any, courseId: number) {
-  const nextWaitlisted = await tx.enrollment.findFirst({
+  const nextWaitlisted = await tx.enrollments.findFirst({
     where: {
-      courseId,
+      course_id: courseId,
       status: EnrollmentStatus.WAITLISTED
     },
     orderBy: {
-      waitlistPosition: 'asc'
+      waitlist_position: 'asc'
     }
   });
 
   if (nextWaitlisted) {
     // Update enrollment to confirmed
-    await tx.enrollment.update({
+    await tx.enrollments.update({
       where: { id: nextWaitlisted.id },
       data: {
         status: EnrollmentStatus.CONFIRMED,
-        waitlistPosition: null
+        waitlist_position: null
       }
     });
 
     // Increment course enrollment
-    await tx.course.update({
+    await tx.courses.update({
       where: { id: courseId },
       data: {
-        currentEnrollment: {
+        current_enrollment: {
           increment: 1
         },
         version: {
@@ -550,20 +548,20 @@ async function promoteFromWaitlist(tx: any, courseId: number) {
     });
 
     // Update remaining waitlist positions
-    await tx.enrollment.updateMany({
+    await tx.enrollments.updateMany({
       where: {
-        courseId,
+        course_id: courseId,
         status: EnrollmentStatus.WAITLISTED
       },
       data: {
-        waitlistPosition: {
+        waitlist_position: {
           decrement: 1
         }
       }
     });
 
     // Create audit log
-    await createAuditLog(tx, nextWaitlisted.userId, 'PROMOTED_FROM_WAITLIST', nextWaitlisted.id, {
+    await createAuditLog(tx, nextWaitlisted.user_id, 'PROMOTED_FROM_WAITLIST', nextWaitlisted.id, {
       courseId
     });
   }
@@ -573,12 +571,12 @@ async function promoteFromWaitlist(tx: any, courseId: number) {
  * Helper: Create audit log
  */
 async function createAuditLog(tx: any, userId: number, action: string, entityId: number, changes: any) {
-  await tx.auditLog.create({
+  await tx.audit_logs.create({
     data: {
-      userId,
+      user_id: userId,
       action,
-      entityType: 'enrollment',
-      entityId,
+      entity_type: 'enrollment',
+      entity_id: entityId,
       changes
     }
   });
@@ -599,21 +597,21 @@ async function estimateWaitTime(): Promise<number> {
  * Get course waitlist
  */
 export async function getCourseWaitlist(courseId: number) {
-  const waitlist = await prisma.enrollment.findMany({
+  const waitlist = await prisma.enrollments.findMany({
     where: {
-      courseId,
+      course_id: courseId,
       status: EnrollmentStatus.WAITLISTED
     },
     include: {
-      user: {
+      users: {
         select: {
-          userIdentifier: true,
-          fullName: true
+          user_identifier: true,
+          full_name: true
         }
       }
     },
     orderBy: {
-      waitlistPosition: 'asc'
+      waitlist_position: 'asc'
     }
   });
 

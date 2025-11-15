@@ -11,16 +11,17 @@ import * as enrollmentService from '../services/enrollmentService';
  * Enroll in a course (queued)
  * POST /api/enrollments
  */
-export async function enrollInCourse(req: AuthRequest, res: Response) {
+export async function enrollInCourse(req: AuthRequest, res: Response): Promise<void> {
   try {
     const { courseId } = req.body;
     const userId = (req as any).userId || (req as any).user?.userId;
 
     if (!userId) {
-      return res.status(401).json({
+      res.status(401).json({
         success: false,
         message: 'Authentication required'
       });
+      return;
     }
 
     const result = await enrollmentService.queueEnrollment(userId, courseId);
@@ -42,16 +43,17 @@ export async function enrollInCourse(req: AuthRequest, res: Response) {
  * Drop a course
  * DELETE /api/enrollments/:enrollmentId
  */
-export async function dropCourse(req: AuthRequest, res: Response) {
+export async function dropCourse(req: AuthRequest, res: Response): Promise<void> {
   try {
     const enrollmentId = parseInt(req.params.enrollmentId);
     const userId = (req as any).userId || (req as any).user?.userId;
 
     if (!userId) {
-      return res.status(401).json({
+      res.status(401).json({
         success: false,
         message: 'Authentication required'
       });
+      return;
     }
 
     const result = await enrollmentService.dropEnrollment(enrollmentId, userId);
@@ -73,15 +75,16 @@ export async function dropCourse(req: AuthRequest, res: Response) {
  * Get my enrollments
  * GET /api/enrollments/my-courses
  */
-export async function getMyEnrollments(req: AuthRequest, res: Response) {
+export async function getMyEnrollments(req: AuthRequest, res: Response): Promise<void> {
   try {
     const userId = (req as any).userId || (req as any).user?.userId;
 
     if (!userId) {
-      return res.status(401).json({
+      res.status(401).json({
         success: false,
         message: 'Authentication required'
       });
+      return;
     }
 
     const enrollments = await enrollmentService.getUserEnrollments(userId);

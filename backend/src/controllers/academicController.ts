@@ -1,6 +1,6 @@
 import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth';
-import prisma from '../config/database';
+import prisma from '../config/prisma';
 import { AppError } from '../utils/errors';
 
 /**
@@ -10,37 +10,36 @@ export async function getMyGrades(req: AuthRequest, res: Response) {
   try {
     const userId = req.user!.id;
 
-    const enrollments = await prisma.enrollment.findMany({
-      where: { userId },
+    const enrollments = await prisma.enrollments.findMany({
+      where: { user_id: userId },
       include: {
-        course: {
+        courses: {
           select: {
-            courseCode: true,
-            courseName: true,
+            course_code: true,
+            course_name: true,
             credits: true,
             semester: true,
             year: true,
           }
         },
-        grade: true,
+        grades: true,
       },
       orderBy: [
-        { course: { year: 'desc' } },
-        { course: { semester: 'desc' } },
+        { enrolled_at: 'desc' },
       ],
     });
 
     const gradesData = enrollments.map(e => ({
       enrollmentId: e.id,
-      semester: e.course.semester,
-      year: e.course.year,
-      courseCode: e.course.courseCode,
-      courseName: e.course.courseName,
-      credits: e.course.credits,
-      letterGrade: e.grade?.letterGrade || 'IP',
-      numericGrade: e.grade?.numericGrade,
-      gradePoints: e.grade?.gradePoints,
-      status: e.grade?.status || 'IN_PROGRESS',
+      semester: e.courses.semester || null,
+      year: e.courses.year || null,
+      courseCode: e.courses.course_code,
+      courseName: e.courses.course_name,
+      credits: e.courses.credits,
+      letterGrade: e.grades?.letter_grade || 'IP',
+      numericGrade: e.grades?.numeric_grade,
+      gradePoints: e.grades?.grade_points,
+      status: e.grades?.status || 'IN_PROGRESS',
     }));
 
     res.json({
@@ -68,33 +67,33 @@ export async function getGradesByTerm(req: AuthRequest, res: Response) {
       throw new AppError('Semester and year are required', 400);
     }
 
-    const enrollments = await prisma.enrollment.findMany({
+    const enrollments = await prisma.enrollments.findMany({
       where: {
-        userId,
-        course: {
+        user_id: userId,
+        courses: {
           semester: semester as any,
           year: parseInt(year as string),
         }
       },
       include: {
-        course: {
+        courses: {
           select: {
-            courseCode: true,
-            courseName: true,
+            course_code: true,
+            course_name: true,
             credits: true,
           }
         },
-        grade: true,
+        grades: true,
       },
     });
 
     const gradesData = enrollments.map(e => ({
-      courseCode: e.course.courseCode,
-      courseName: e.course.courseName,
-      credits: e.course.credits,
-      letterGrade: e.grade?.letterGrade || 'IP',
-      numericGrade: e.grade?.numericGrade,
-      gradePoints: e.grade?.gradePoints,
+      courseCode: e.courses.course_code,
+      courseName: e.courses.course_name,
+      credits: e.courses.credits,
+      letterGrade: e.grades?.letter_grade || 'IP',
+      numericGrade: e.grades?.numeric_grade,
+      gradePoints: e.grades?.grade_points,
     }));
 
     res.json({
@@ -125,22 +124,22 @@ export async function getCourseGrade(req: AuthRequest, res: Response) {
     const userId = req.user!.id;
     const { courseId } = req.params;
 
-    const enrollment = await prisma.enrollment.findFirst({
+    const enrollment = await prisma.enrollments.findFirst({
       where: {
-        userId,
-        courseId: parseInt(courseId),
+        user_id: userId,
+        course_id: parseInt(courseId),
       },
       include: {
-        course: {
+        courses: {
           select: {
-            courseCode: true,
-            courseName: true,
+            course_code: true,
+            course_name: true,
             credits: true,
             semester: true,
             year: true,
           }
         },
-        grade: true,
+        grades: true,
       },
     });
 
@@ -151,16 +150,16 @@ export async function getCourseGrade(req: AuthRequest, res: Response) {
     res.json({
       success: true,
       data: {
-        courseCode: enrollment.course.courseCode,
-        courseName: enrollment.course.courseName,
-        credits: enrollment.course.credits,
-        semester: enrollment.course.semester,
-        year: enrollment.course.year,
-        letterGrade: enrollment.grade?.letterGrade || 'IP',
-        numericGrade: enrollment.grade?.numericGrade,
-        gradePoints: enrollment.grade?.gradePoints,
-        status: enrollment.grade?.status || 'IN_PROGRESS',
-        comments: enrollment.grade?.comments,
+        courseCode: enrollment.courses.course_code,
+        courseName: enrollment.courses.course_name,
+        credits: enrollment.courses.credits,
+        semester: enrollment.courses.semester || null,
+        year: enrollment.courses.year || null,
+        letterGrade: enrollment.grades?.letter_grade || 'IP',
+        numericGrade: enrollment.grades?.numeric_grade,
+        gradePoints: enrollment.grades?.grade_points,
+        status: enrollment.grades?.status || 'IN_PROGRESS',
+        comments: enrollment.grades?.comments,
       },
     });
   } catch (error) {
@@ -187,8 +186,8 @@ export async function getTranscript(req: AuthRequest, res: Response) {
     const userId = req.user!.id;
 
     // Get all transcripts
-    const transcripts = await prisma.transcript.findMany({
-      where: { userId },
+    const transcripts = await prisma.transcripts.findMany({
+      where: { user_id: userId },
       orderBy: [
         { year: 'asc' },
         { semester: 'asc' },
@@ -196,35 +195,37 @@ export async function getTranscript(req: AuthRequest, res: Response) {
     });
 
     // Get all graded enrollments
-    const enrollments = await prisma.enrollment.findMany({
+    const enrollments = await prisma.enrollments.findMany({
       where: {
-        userId,
-        grade: {
+        user_id: userId,
+        grades: {
           status: 'PUBLISHED'
         },
       },
       include: {
-        course: true,
-        grade: true,
+        courses: true,
+        grades: true,
       },
       orderBy: [
-        { course: { year: 'asc' } },
-        { course: { semester: 'asc' } },
+        { courses: { year: 'asc' } },
+        { courses: { semester: 'asc' } },
       ],
     });
 
     // Group enrollments by term
     const enrollmentsByTerm = enrollments.reduce((acc, e) => {
-      const key = `${e.course.year}-${e.course.semester}`;
+      const year = e.courses.year || new Date().getFullYear();
+      const semester = e.courses.semester || 'UNKNOWN';
+      const key = `${year}-${semester}`;
       if (!acc[key]) {
         acc[key] = [];
       }
       acc[key].push({
-        courseCode: e.course.courseCode,
-        courseName: e.course.courseName,
-        credits: e.course.credits,
-        grade: e.grade?.letterGrade,
-        gradePoints: e.grade?.gradePoints,
+        courseCode: e.courses.course_code,
+        courseName: e.courses.course_name,
+        credits: e.courses.credits,
+        grade: e.grades?.letter_grade,
+        gradePoints: e.grades?.grade_points,
       });
       return acc;
     }, {} as Record<string, any[]>);
@@ -234,19 +235,19 @@ export async function getTranscript(req: AuthRequest, res: Response) {
       ? transcripts[transcripts.length - 1]
       : null;
 
-    const totalCredits = enrollments.reduce((sum, e) => sum + e.course.credits, 0);
+    const totalCredits = enrollments.reduce((sum, e) => sum + e.courses.credits, 0);
 
     res.json({
       success: true,
       data: {
         transcripts: transcripts.map(t => ({
-          semester: t.semester,
-          year: t.year,
-          termGPA: t.termGPA,
+          semester: t.semester || null,
+          year: t.year || null,
+          termGPA: t.term_gpa,
           cumulativeGPA: t.gpa,
-          totalCredits: t.totalCredits,
-          earnedCredits: t.earnedCredits,
-          academicStanding: t.academicStanding,
+          totalCredits: t.total_credits,
+          earnedCredits: t.earned_credits,
+          academicStanding: t.academic_standing,
         })),
         enrollmentsByTerm,
         summary: {
@@ -274,12 +275,12 @@ export async function getUnofficialTranscript(req: AuthRequest, res: Response) {
     const userId = req.user!.id;
 
     // Get user info
-    const user = await prisma.user.findUnique({
+    const user = await prisma.users.findUnique({
       where: { id: userId },
       include: {
-        student: {
+        students_students_user_idTousers: {
           include: {
-            major: true,
+            majors: true,
           },
         },
       },
@@ -289,9 +290,11 @@ export async function getUnofficialTranscript(req: AuthRequest, res: Response) {
       throw new AppError('User not found', 404);
     }
 
+    const student = user.students_students_user_idTousers;
+
     // Get transcripts
-    const transcripts = await prisma.transcript.findMany({
-      where: { userId },
+    const transcripts = await prisma.transcripts.findMany({
+      where: { user_id: userId },
       orderBy: [
         { year: 'asc' },
         { semester: 'asc' },
@@ -299,20 +302,20 @@ export async function getUnofficialTranscript(req: AuthRequest, res: Response) {
     });
 
     // Get all enrollments with grades
-    const enrollments = await prisma.enrollment.findMany({
+    const enrollments = await prisma.enrollments.findMany({
       where: {
-        userId,
-        grade: {
+        user_id: userId,
+        grades: {
           isNot: null,
         },
       },
       include: {
-        course: true,
-        grade: true,
+        courses: true,
+        grades: true,
       },
       orderBy: [
-        { course: { year: 'asc' } },
-        { course: { semester: 'asc' } },
+        { courses: { year: 'asc' } },
+        { courses: { semester: 'asc' } },
       ],
     });
 
@@ -321,22 +324,22 @@ export async function getUnofficialTranscript(req: AuthRequest, res: Response) {
       data: {
         isOfficial: false,
         student: {
-          fullName: user.fullName,
-          studentId: user.student?.studentId,
+          fullName: user.full_name,
+          studentId: student?.student_id,
           email: user.email,
-          major: user.student?.major?.name,
-          expectedGraduation: user.student?.expectedGrad,
+          major: student?.majors?.name,
+          expectedGraduation: student?.expected_grad,
         },
         transcripts,
         courses: enrollments.map(e => ({
-          semester: e.course.semester,
-          year: e.course.year,
-          courseCode: e.course.courseCode,
-          courseName: e.course.courseName,
-          credits: e.course.credits,
-          letterGrade: e.grade?.letterGrade,
-          numericGrade: e.grade?.numericGrade,
-          gradePoints: e.grade?.gradePoints,
+          semester: e.courses.semester || null,
+          year: e.courses.year || null,
+          courseCode: e.courses.course_code,
+          courseName: e.courses.course_name,
+          credits: e.courses.credits,
+          letterGrade: e.grades?.letter_grade,
+          numericGrade: e.grades?.numeric_grade,
+          gradePoints: e.grades?.grade_points,
         })),
       },
     });
@@ -366,12 +369,12 @@ export async function generateTranscriptPDF(req: AuthRequest, res: Response) {
     // This would typically generate a PDF, but for now we'll return the data
     // In a production app, you'd use a library like pdfkit or puppeteer
 
-    const user = await prisma.user.findUnique({
+    const user = await prisma.users.findUnique({
       where: { id: userId },
       include: {
-        student: {
+        students_students_user_idTousers: {
           include: {
-            major: true,
+            majors: true,
           },
         },
         transcripts: {
@@ -387,20 +390,20 @@ export async function generateTranscriptPDF(req: AuthRequest, res: Response) {
       throw new AppError('User not found', 404);
     }
 
-    const enrollments = await prisma.enrollment.findMany({
+    const enrollments = await prisma.enrollments.findMany({
       where: {
-        userId,
-        grade: {
+        user_id: userId,
+        grades: {
           status: 'PUBLISHED',
         },
       },
       include: {
-        course: true,
-        grade: true,
+        courses: true,
+        grades: true,
       },
       orderBy: [
-        { course: { year: 'asc' } },
-        { course: { semester: 'asc' } },
+        { courses: { year: 'asc' } },
+        { courses: { semester: 'asc' } },
       ],
     });
 
@@ -408,7 +411,7 @@ export async function generateTranscriptPDF(req: AuthRequest, res: Response) {
       success: true,
       message: 'PDF generation would happen here',
       data: {
-        student: user.student,
+        student: user.students_students_user_idTousers,
         transcripts: user.transcripts,
         courses: enrollments,
       },
@@ -432,20 +435,19 @@ export async function generateTranscriptPDF(req: AuthRequest, res: Response) {
 /**
  * Get GPA information
  */
-export async function getGPA(req: AuthRequest, res: Response) {
+export async function getGPA(req: AuthRequest, res: Response): Promise<void> {
   try {
     const userId = req.user!.id;
 
-    const latestTranscript = await prisma.transcript.findFirst({
-      where: { userId },
-      orderBy: [
-        { year: 'desc' },
-        { semester: 'desc' },
-      ],
+    const latestTranscript = await prisma.transcripts.findFirst({
+      where: { user_id: userId },
+      orderBy: {
+        generated_at: 'desc',
+      },
     });
 
     if (!latestTranscript) {
-      return res.json({
+      res.json({
         success: true,
         data: {
           cumulativeGPA: 0,
@@ -456,24 +458,32 @@ export async function getGPA(req: AuthRequest, res: Response) {
           message: 'No transcript data available',
         },
       });
+      return;
     }
 
     res.json({
       success: true,
       data: {
         cumulativeGPA: latestTranscript.gpa,
-        currentTermGPA: latestTranscript.termGPA,
-        totalCredits: latestTranscript.totalCredits,
-        earnedCredits: latestTranscript.earnedCredits,
-        academicStanding: latestTranscript.academicStanding,
-        qualityPoints: latestTranscript.qualityPoints,
+        currentTermGPA: latestTranscript.term_gpa,
+        totalCredits: latestTranscript.total_credits,
+        earnedCredits: latestTranscript.earned_credits,
+        academicStanding: latestTranscript.academic_standing,
+        qualityPoints: latestTranscript.quality_points,
       },
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Get GPA error:', error);
+    console.error('Error details:', {
+      name: error.name,
+      code: error.code,
+      message: error.message,
+      meta: error.meta,
+    });
     res.status(500).json({
       success: false,
       message: 'Failed to fetch GPA',
+      error: error.message || 'Unknown error',
     });
   }
 }
@@ -485,33 +495,37 @@ export async function getGPAHistory(req: AuthRequest, res: Response) {
   try {
     const userId = req.user!.id;
 
-    const transcripts = await prisma.transcript.findMany({
-      where: { userId },
+    const transcripts = await prisma.transcripts.findMany({
+      where: { user_id: userId },
       orderBy: [
         { year: 'asc' },
         { semester: 'asc' },
       ],
       select: {
+        term_gpa: true,
+        gpa: true,
+        total_credits: true,
+        academic_standing: true,
         semester: true,
         year: true,
-        termGPA: true,
-        gpa: true,
-        totalCredits: true,
-        academicStanding: true,
       },
     });
 
     res.json({
       success: true,
-      data: transcripts.map(t => ({
-        term: `${t.semester} ${t.year}`,
-        semester: t.semester,
-        year: t.year,
-        termGPA: t.termGPA,
-        cumulativeGPA: t.gpa,
-        totalCredits: t.totalCredits,
-        academicStanding: t.academicStanding,
-      })),
+      data: transcripts.map(t => {
+        const semester = t.semester || null;
+        const year = t.year || null;
+        return {
+          term: semester && year ? `${semester} ${year}` : 'Unknown',
+          semester,
+          year,
+          termGPA: t.term_gpa,
+          cumulativeGPA: t.gpa,
+          totalCredits: t.total_credits,
+          academicStanding: t.academic_standing,
+        };
+      }),
     });
   } catch (error) {
     console.error('Get GPA history error:', error);

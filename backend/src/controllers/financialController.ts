@@ -1,6 +1,6 @@
 import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth';
-import prisma from '../config/database';
+import prisma from '../config/prisma';
 import { AppError } from '../utils/errors';
 
 /**
@@ -11,13 +11,15 @@ export async function getAccount(req: AuthRequest, res: Response) {
     const userId = req.user!.id;
 
     let account = await prisma.financialAccount.findUnique({
-      where: { userId },
+      where: { userId: userId },
     });
 
     // Create account if it doesn't exist
     if (!account) {
       account = await prisma.financialAccount.create({
-        data: { userId },
+        data: { 
+          userId: userId,
+        },
       });
     }
 
@@ -49,7 +51,7 @@ export async function getCharges(req: AuthRequest, res: Response) {
     const userId = req.user!.id;
 
     const account = await prisma.financialAccount.findUnique({
-      where: { userId },
+      where: { userId: userId },
       include: {
         charges: {
           orderBy: {
@@ -80,12 +82,14 @@ export async function getCharges(req: AuthRequest, res: Response) {
         createdAt: charge.createdAt,
       })),
     });
+    return;
   } catch (error) {
     console.error('Get charges error:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to fetch charges',
     });
+    return;
   }
 }
 
@@ -97,7 +101,7 @@ export async function getPayments(req: AuthRequest, res: Response) {
     const userId = req.user!.id;
 
     const account = await prisma.financialAccount.findUnique({
-      where: { userId },
+      where: { userId: userId },
       include: {
         payments: {
           orderBy: {
@@ -126,12 +130,14 @@ export async function getPayments(req: AuthRequest, res: Response) {
         createdAt: payment.createdAt,
       })),
     });
+    return;
   } catch (error) {
     console.error('Get payments error:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to fetch payments',
     });
+    return;
   }
 }
 
@@ -152,7 +158,7 @@ export async function makePayment(req: AuthRequest, res: Response) {
     }
 
     const account = await prisma.financialAccount.findUnique({
-      where: { userId },
+      where: { userId: userId },
     });
 
     if (!account) {
@@ -165,7 +171,7 @@ export async function makePayment(req: AuthRequest, res: Response) {
         accountId: account.id,
         amount: parseFloat(amount),
         method,
-        referenceNumber,
+        referenceNumber: referenceNumber,
         status: 'PENDING',
       },
     });
@@ -193,13 +199,13 @@ export async function makePayment(req: AuthRequest, res: Response) {
     res.json({
       success: true,
       message: 'Payment processed successfully',
-      data: {
-        paymentId: updatedPayment.id,
-        amount: updatedPayment.amount,
-        status: updatedPayment.status,
-        referenceNumber: updatedPayment.referenceNumber,
-        processedAt: updatedPayment.processedAt,
-      },
+        data: {
+          paymentId: updatedPayment.id,
+          amount: updatedPayment.amount,
+          status: updatedPayment.status,
+          referenceNumber: updatedPayment.referenceNumber,
+          processedAt: updatedPayment.processedAt,
+        },
     });
   } catch (error) {
     if (error instanceof AppError) {
@@ -230,7 +236,7 @@ export async function getStatement(req: AuthRequest, res: Response) {
     }
 
     const account = await prisma.financialAccount.findUnique({
-      where: { userId },
+      where: { userId: userId },
       include: {
         user: {
           select: {
@@ -278,10 +284,10 @@ export async function getStatement(req: AuthRequest, res: Response) {
       success: true,
       data: {
         student: {
-          name: account.user.fullName,
-          studentId: account.user.student?.studentId,
-          email: account.user.email,
-          major: account.user.student?.major?.name,
+          name: account.user?.fullName || '',
+          studentId: account.user?.student?.studentId,
+          email: account.user?.email || '',
+          major: account.user?.student?.major?.name,
         },
         term: {
           semester,
@@ -320,7 +326,7 @@ export async function getUnpaidCharges(req: AuthRequest, res: Response) {
     const userId = req.user!.id;
 
     const account = await prisma.financialAccount.findUnique({
-      where: { userId },
+      where: { userId: userId },
       include: {
         charges: {
           where: {
@@ -349,11 +355,13 @@ export async function getUnpaidCharges(req: AuthRequest, res: Response) {
         totalUnpaid,
       },
     });
+    return;
   } catch (error) {
     console.error('Get unpaid charges error:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to fetch unpaid charges',
     });
+    return;
   }
 }

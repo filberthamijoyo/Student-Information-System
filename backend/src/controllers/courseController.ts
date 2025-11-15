@@ -63,15 +63,16 @@ export async function getCourseById(req: Request, res: Response) {
  * Search courses
  * GET /api/courses/search
  */
-export async function searchCourses(req: Request, res: Response) {
+export async function searchCourses(req: Request, res: Response): Promise<void> {
   try {
     const query = req.query.q as string;
 
     if (!query) {
-      return res.status(400).json({
+      res.status(400).json({
         success: false,
         message: 'Search query is required'
       });
+      return;
     }
 
     const courses = await courseService.searchCourses(query);
@@ -92,7 +93,7 @@ export async function searchCourses(req: Request, res: Response) {
  * Get departments
  * GET /api/courses/departments
  */
-export async function getDepartments(req: Request, res: Response) {
+export async function getDepartments(_req: Request, res: Response): Promise<void> {
   try {
     const departments = await courseService.getDepartments();
 
@@ -104,6 +105,37 @@ export async function getDepartments(req: Request, res: Response) {
     res.status(500).json({
       success: false,
       message: error.message || 'Failed to get departments'
+    });
+  }
+}
+
+/**
+ * Get courses by department
+ * GET /api/courses/department/:department
+ */
+export async function getCoursesByDepartment(req: Request, res: Response): Promise<void> {
+  try {
+    const department = req.params.department;
+
+    if (!department) {
+      res.status(400).json({
+        success: false,
+        message: 'Department parameter is required'
+      });
+      return;
+    }
+
+    const courses = await courseService.getAllCourses({ department });
+
+    res.status(200).json({
+      success: true,
+      message: 'Courses retrieved successfully',
+      data: courses
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to get courses by department'
     });
   }
 }

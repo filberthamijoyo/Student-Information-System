@@ -9,7 +9,7 @@ router.use(authenticate);
 
 // Add/drop request routes
 router.post('/request', addDropController.createRequest);
-router.get('/my-requests/:studentId', addDropController.getMyRequests);
+router.get('/my-requests', addDropController.getMyRequests);
 router.get('/pending-requests', addDropController.getPendingRequests);
 router.put('/approve/:requestId', addDropController.approveRequest);
 router.put('/reject/:requestId', addDropController.rejectRequest);

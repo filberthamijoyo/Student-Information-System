@@ -42,11 +42,11 @@ const REFRESH_TOKEN_EXPIRY = process.env.JWT_REFRESH_EXPIRY || '7d';
  */
 export async function register(data: RegisterData) {
   // Check if user already exists
-  const existingUser = await prisma.user.findFirst({
+  const existingUser = await prisma.users.findFirst({
     where: {
       OR: [
         { email: data.email },
-        { userIdentifier: data.userIdentifier }
+        { user_identifier: data.userIdentifier }
       ]
     }
   });
@@ -55,7 +55,7 @@ export async function register(data: RegisterData) {
     if (existingUser.email === data.email) {
       throw new Error('Email already registered');
     }
-    if (existingUser.userIdentifier === data.userIdentifier) {
+    if (existingUser.user_identifier === data.userIdentifier) {
       throw new Error('User identifier already taken');
     }
   }
@@ -64,27 +64,28 @@ export async function register(data: RegisterData) {
   const passwordHash = await bcrypt.hash(data.password, 10);
 
   // Create user
-  const user = await prisma.user.create({
+  const user = await prisma.users.create({
     data: {
-      userIdentifier: data.userIdentifier,
+      user_identifier: data.userIdentifier,
       email: data.email,
-      passwordHash,
-      fullName: data.fullName,
+      password_hash: passwordHash,
+      full_name: data.fullName,
       role: data.role || Role.STUDENT,
       major: data.major,
-      yearLevel: data.yearLevel,
-      department: data.department
+      year_level: data.yearLevel,
+      department: data.department,
+      updated_at: new Date()
     },
     select: {
       id: true,
-      userIdentifier: true,
+      user_identifier: true,
       email: true,
-      fullName: true,
+      full_name: true,
       role: true,
       major: true,
-      yearLevel: true,
+      year_level: true,
       department: true,
-      createdAt: true
+      created_at: true
     }
   });
 
@@ -93,12 +94,12 @@ export async function register(data: RegisterData) {
   const refreshToken = generateRefreshToken(user);
 
   // Create audit log
-  await prisma.auditLog.create({
+  await prisma.audit_logs.create({
     data: {
-      userId: user.id,
+      user_id: user.id,
       action: 'REGISTER',
-      entityType: 'user',
-      entityId: user.id,
+      entity_type: 'user',
+      entity_id: user.id,
       changes: {
         email: user.email,
         role: user.role
@@ -107,7 +108,17 @@ export async function register(data: RegisterData) {
   });
 
   return {
-    user,
+    user: {
+      id: user.id,
+      userIdentifier: user.user_identifier,
+      email: user.email,
+      fullName: user.full_name,
+      role: user.role,
+      major: user.major,
+      yearLevel: user.year_level,
+      department: user.department,
+      createdAt: user.created_at
+    },
     token,
     refreshToken
   };
@@ -122,11 +133,11 @@ export async function login(data: LoginData, ipAddress?: string) {
     throw new Error('Email or user identifier is required');
   }
 
-  const user = await prisma.user.findFirst({
+  const user = await prisma.users.findFirst({
     where: {
       OR: [
         { email: data.email || '' },
-        { userIdentifier: data.userIdentifier || '' }
+        { user_identifier: data.userIdentifier || '' }
       ]
     }
   });
@@ -136,17 +147,17 @@ export async function login(data: LoginData, ipAddress?: string) {
   }
 
   // Verify password
-  const isPasswordValid = await bcrypt.compareSync(data.password, user.passwordHash);
+  const isPasswordValid = await bcrypt.compareSync(data.password, user.password_hash);
 
   if (!isPasswordValid) {
     // Create failed login audit log
-    await prisma.auditLog.create({
+    await prisma.audit_logs.create({
       data: {
-        userId: user.id,
+        user_id: user.id,
         action: 'LOGIN_FAILED',
-        entityType: 'user',
-        entityId: user.id,
-        ipAddress
+        entity_type: 'user',
+        entity_id: user.id,
+        ip_address: ipAddress
       }
     });
 
@@ -158,21 +169,32 @@ export async function login(data: LoginData, ipAddress?: string) {
   const refreshToken = generateRefreshToken(user);
 
   // Create successful login audit log
-  await prisma.auditLog.create({
+  await prisma.audit_logs.create({
     data: {
-      userId: user.id,
+      user_id: user.id,
       action: 'LOGIN',
-      entityType: 'user',
-      entityId: user.id,
-      ipAddress
+      entity_type: 'user',
+      entity_id: user.id,
+      ip_address: ipAddress
     }
   });
 
   // Return user without password
-  const { passwordHash, ...userWithoutPassword } = user;
+  const { password_hash, ...userWithoutPassword } = user;
 
   return {
-    user: userWithoutPassword,
+    user: {
+      id: userWithoutPassword.id,
+      userIdentifier: userWithoutPassword.user_identifier,
+      email: userWithoutPassword.email,
+      fullName: userWithoutPassword.full_name,
+      role: userWithoutPassword.role,
+      major: userWithoutPassword.major,
+      yearLevel: userWithoutPassword.year_level,
+      department: userWithoutPassword.department,
+      createdAt: userWithoutPassword.created_at,
+      updatedAt: userWithoutPassword.updated_at
+    },
     token,
     refreshToken
   };
@@ -182,19 +204,19 @@ export async function login(data: LoginData, ipAddress?: string) {
  * Get user profile
  */
 export async function getUserProfile(userId: number) {
-  const user = await prisma.user.findUnique({
+  const user = await prisma.users.findUnique({
     where: { id: userId },
     select: {
       id: true,
-      userIdentifier: true,
+      user_identifier: true,
       email: true,
-      fullName: true,
+      full_name: true,
       role: true,
       major: true,
-      yearLevel: true,
+      year_level: true,
       department: true,
-      createdAt: true,
-      updatedAt: true
+      created_at: true,
+      updated_at: true
     }
   });
 
@@ -202,7 +224,18 @@ export async function getUserProfile(userId: number) {
     throw new Error('User not found');
   }
 
-  return user;
+  return {
+    id: user.id,
+    userIdentifier: user.user_identifier,
+    email: user.email,
+    fullName: user.full_name,
+    role: user.role,
+    major: user.major,
+    yearLevel: user.year_level,
+    department: user.department,
+    createdAt: user.created_at,
+    updatedAt: user.updated_at
+  };
 }
 
 /**
@@ -211,11 +244,12 @@ export async function getUserProfile(userId: number) {
 function generateAccessToken(user: any): string {
   const payload: TokenPayload = {
     userId: user.id,
-    userIdentifier: user.userIdentifier,
+    userIdentifier: user.user_identifier || user.userIdentifier,
     email: user.email,
     role: user.role
   };
 
+  // @ts-expect-error - expiresIn accepts string values like '24h', '7d', etc.
   return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRY });
 }
 
@@ -225,11 +259,12 @@ function generateAccessToken(user: any): string {
 function generateRefreshToken(user: any): string {
   const payload: TokenPayload = {
     userId: user.id,
-    userIdentifier: user.userIdentifier,
+    userIdentifier: user.user_identifier || user.userIdentifier,
     email: user.email,
     role: user.role
   };
 
+  // @ts-expect-error - expiresIn accepts string values like '24h', '7d', etc.
   return jwt.sign(payload, REFRESH_TOKEN_SECRET, { expiresIn: REFRESH_TOKEN_EXPIRY });
 }
 
@@ -261,7 +296,7 @@ export function verifyRefreshToken(token: string): TokenPayload {
 export async function refreshAccessToken(refreshToken: string) {
   const payload = verifyRefreshToken(refreshToken);
 
-  const user = await prisma.user.findUnique({
+  const user = await prisma.users.findUnique({
     where: { id: payload.userId }
   });
 
@@ -273,5 +308,59 @@ export async function refreshAccessToken(refreshToken: string) {
 
   return {
     token: newAccessToken
+  };
+}
+
+/**
+ * Change user password
+ */
+export async function changePassword(userId: number, oldPassword: string, newPassword: string) {
+  // Find user
+  const user = await prisma.users.findUnique({
+    where: { id: userId }
+  });
+
+  if (!user) {
+    throw new Error('User not found');
+  }
+
+  // Verify old password
+  const isPasswordValid = await bcrypt.compare(oldPassword, user.password_hash);
+
+  if (!isPasswordValid) {
+    // Create failed password change audit log
+    await prisma.audit_logs.create({
+      data: {
+        user_id: user.id,
+        action: 'PASSWORD_CHANGE_FAILED',
+        entity_type: 'user',
+        entity_id: user.id
+      }
+    });
+
+    throw new Error('Current password is incorrect');
+  }
+
+  // Hash new password
+  const newPasswordHash = await bcrypt.hash(newPassword, 10);
+
+  // Update password
+  await prisma.users.update({
+    where: { id: userId },
+    data: { password_hash: newPasswordHash }
+  });
+
+  // Create successful password change audit log
+  await prisma.audit_logs.create({
+    data: {
+      user_id: user.id,
+      action: 'PASSWORD_CHANGED',
+      entity_type: 'user',
+      entity_id: user.id
+    }
+  });
+
+  return {
+    message: 'Password changed successfully'
   };
 }

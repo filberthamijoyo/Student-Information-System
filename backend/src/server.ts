@@ -2,11 +2,11 @@ import express, { Application, Request, Response } from 'express';
 import dotenv from 'dotenv';
 import cors from 'cors';
 import { testConnection, closePool } from './config/database';
-import { testRedisConnection, closeRedis } from './config/redis';
+import { testRedisConnection, closeRedis, reconnectRedis, getRedisStatus } from './config/redis';
 import { setupEnrollmentWorker, shutdownWorker } from './workers/enrollmentWorker';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 import { apiLimiter } from './middleware/rateLimiter';
-import { waitForServices, displayServiceStatus } from './utils/startup';
+import { displayServiceStatus } from './utils/startup';
 
 // Import routes
 import authRoutes from './routes/authRoutes';
@@ -71,7 +71,7 @@ app.use(apiLimiter);
 
 // Request logging middleware (development only)
 if (process.env.NODE_ENV === 'development') {
-  app.use((req: Request, res: Response, next) => {
+  app.use((req: Request, _res: Response, next) => {
     console.log(`${req.method} ${req.path}`, {
       body: req.body,
       query: req.query,
@@ -86,9 +86,10 @@ if (process.env.NODE_ENV === 'development') {
  */
 
 // Health check endpoint
-app.get('/health', async (req: Request, res: Response) => {
+app.get('/health', async (_req: Request, res: Response) => {
   const dbConnected = await testConnection();
   const redisConnected = await testRedisConnection();
+  const redisStatus = getRedisStatus();
 
   res.status(200).json({
     status: 'ok',
@@ -96,14 +97,38 @@ app.get('/health', async (req: Request, res: Response) => {
     uptime: process.uptime(),
     services: {
       database: dbConnected ? 'connected' : 'disconnected',
-      redis: redisConnected ? 'connected' : 'disconnected',
+      redis: {
+        connected: redisConnected,
+        status: redisStatus.status,
+      },
       queue: 'active',
     },
   });
 });
 
+// Redis reconnect endpoint (for troubleshooting)
+app.post('/admin/redis/reconnect', async (_req: Request, res: Response) => {
+  try {
+    const reconnected = await reconnectRedis();
+    const status = getRedisStatus();
+    
+    res.status(reconnected ? 200 : 503).json({
+      success: reconnected,
+      message: reconnected 
+        ? 'Redis reconnected successfully' 
+        : 'Failed to reconnect to Redis. Please ensure Redis is running.',
+      status: status.status,
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
 // API info endpoint
-app.get('/', (req: Request, res: Response) => {
+app.get('/', (_req: Request, res: Response) => {
   res.json({
     name: 'CUHK Student Information System API',
     version: '2.0.0',

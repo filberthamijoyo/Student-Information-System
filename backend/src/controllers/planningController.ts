@@ -1,7 +1,8 @@
 import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth';
-import prisma from '../config/database';
+import prisma from '../config/prisma';
 import { AppError } from '../utils/errors';
+import { EnrollmentStatus } from '@prisma/client';
 
 /**
  * Get degree audit for the authenticated user
@@ -10,26 +11,23 @@ export async function getDegreeAudit(req: AuthRequest, res: Response) {
   try {
     const userId = req.user!.id;
 
-    const student = await prisma.student.findUnique({
-      where: { userId },
+    const student = await prisma.students.findUnique({
+      where: { user_id: userId },
       include: {
-        major: {
+        majors: {
           include: {
             requirements: true,
           },
         },
-        user: {
+        users_students_user_idTousers: {
           include: {
             enrollments: {
               where: {
-                status: 'CONFIRMED',
-                grade: {
-                  status: 'PUBLISHED',
-                },
+                status: EnrollmentStatus.CONFIRMED,
               },
               include: {
-                course: true,
-                grade: true,
+                courses: true,
+                grades: true,
               },
             },
           },
@@ -37,7 +35,7 @@ export async function getDegreeAudit(req: AuthRequest, res: Response) {
       },
     });
 
-    if (!student || !student.major) {
+    if (!student || !student.majors) {
       return res.json({
         success: true,
         data: {
@@ -48,12 +46,17 @@ export async function getDegreeAudit(req: AuthRequest, res: Response) {
       });
     }
 
+    // Filter enrollments to only include those with published grades
+    const enrollmentsWithPublishedGrades = student.users_students_user_idTousers.enrollments.filter(
+      e => e.grades?.status === 'PUBLISHED'
+    );
+
     // Calculate completed courses
-    const completedCourses = student.user.enrollments.map(e => e.course.courseCode);
-    const totalCreditsEarned = student.user.enrollments.reduce((sum, e) => sum + e.course.credits, 0);
+    const completedCourses = enrollmentsWithPublishedGrades.map(e => e.courses.course_code);
+    const totalCreditsEarned = enrollmentsWithPublishedGrades.reduce((sum, e) => sum + e.courses.credits, 0);
 
     // Check each requirement
-    const requirementProgress = student.major.requirements.map(req => {
+    const requirementProgress = student.majors.requirements.map(req => {
       const reqCourses = req.courses as string[];
       const completed = completedCourses.filter(code => reqCourses.includes(code));
 
@@ -72,25 +75,27 @@ export async function getDegreeAudit(req: AuthRequest, res: Response) {
       success: true,
       data: {
         major: {
-          code: student.major.code,
-          name: student.major.name,
-          degree: student.major.degree,
-          totalCredits: student.major.totalCredits,
+          code: student.majors?.code,
+          name: student.majors?.name,
+          degree: student.majors?.degree,
+          totalCredits: student.majors?.total_credits,
         },
         progress: {
-          totalCreditsRequired: student.major.totalCredits,
+          totalCreditsRequired: student.majors?.total_credits || 120,
           totalCreditsEarned,
-          percentageComplete: (totalCreditsEarned / student.major.totalCredits) * 100,
+          percentageComplete: (totalCreditsEarned / (student.majors?.total_credits || 120)) * 100,
         },
         requirements: requirementProgress,
       },
     });
+    return;
   } catch (error) {
     console.error('Get degree audit error:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to fetch degree audit',
     });
+    return;
   }
 }
 
@@ -101,10 +106,10 @@ export async function getRequirements(req: AuthRequest, res: Response) {
   try {
     const userId = req.user!.id;
 
-    const student = await prisma.student.findUnique({
-      where: { userId },
+    const student = await prisma.students.findUnique({
+      where: { user_id: userId },
       include: {
-        major: {
+        majors: {
           include: {
             requirements: true,
           },
@@ -112,7 +117,7 @@ export async function getRequirements(req: AuthRequest, res: Response) {
       },
     });
 
-    if (!student || !student.major) {
+    if (!student || !student.majors) {
       return res.json({
         success: true,
         data: [],
@@ -122,14 +127,16 @@ export async function getRequirements(req: AuthRequest, res: Response) {
 
     res.json({
       success: true,
-      data: student.major.requirements,
+      data: student.majors.requirements,
     });
+    return;
   } catch (error) {
     console.error('Get requirements error:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to fetch requirements',
     });
+    return;
   }
 }
 
@@ -140,26 +147,24 @@ export async function getProgress(req: AuthRequest, res: Response) {
   try {
     const userId = req.user!.id;
 
-    const student = await prisma.student.findUnique({
-      where: { userId },
+    const student = await prisma.students.findUnique({
+      where: { user_id: userId },
       include: {
-        major: true,
-        user: {
+        majors: true,
+        users_students_user_idTousers: {
           include: {
             enrollments: {
               where: {
-                status: 'CONFIRMED',
-                grade: {
-                  status: 'PUBLISHED',
-                },
+                status: EnrollmentStatus.CONFIRMED,
               },
               include: {
-                course: true,
+                courses: true,
+                grades: true,
               },
             },
             transcripts: {
               orderBy: {
-                generatedAt: 'desc',
+                generated_at: 'desc',
               },
               take: 1,
             },
@@ -172,21 +177,26 @@ export async function getProgress(req: AuthRequest, res: Response) {
       throw new AppError('Student record not found', 404);
     }
 
-    const totalCreditsEarned = student.user.enrollments.reduce((sum, e) => sum + e.course.credits, 0);
-    const latestTranscript = student.user.transcripts[0];
+    // Filter enrollments to only include those with published grades
+    const enrollmentsWithPublishedGrades = student.users_students_user_idTousers.enrollments.filter(
+      e => e.grades?.status === 'PUBLISHED'
+    );
+
+    const totalCreditsEarned = enrollmentsWithPublishedGrades.reduce((sum, e) => sum + e.courses.credits, 0);
+    const latestTranscript = student.users_students_user_idTousers.transcripts[0];
 
     res.json({
       success: true,
       data: {
-        major: student.major?.name,
+        major: student.majors?.name,
         year: student.year,
-        expectedGraduation: student.expectedGrad,
-        totalCreditsRequired: student.major?.totalCredits || 120,
+        expectedGraduation: student.expected_grad,
+        totalCreditsRequired: student.majors?.total_credits || 120,
         totalCreditsEarned,
-        creditsRemaining: (student.major?.totalCredits || 120) - totalCreditsEarned,
-        percentageComplete: (totalCreditsEarned / (student.major?.totalCredits || 120)) * 100,
+        creditsRemaining: (student.majors?.total_credits || 120) - totalCreditsEarned,
+        percentageComplete: (totalCreditsEarned / (student.majors?.total_credits || 120)) * 100,
         gpa: latestTranscript?.gpa || 0,
-        academicStanding: latestTranscript?.academicStanding || 'N/A',
+        academicStanding: latestTranscript?.academic_standing || 'N/A',
       },
     });
   } catch (error) {
@@ -212,11 +222,14 @@ export async function getAdvisor(req: AuthRequest, res: Response) {
   try {
     const userId = req.user!.id;
 
-    const student = await prisma.student.findUnique({
-      where: { userId },
+    const student = await prisma.students.findUnique({
+      where: { user_id: userId },
       include: {
-        advisor: {
-          include: {
+        users_students_advisor_idTousers: {
+          select: {
+            id: true,
+            full_name: true,
+            email: true,
             faculty: true,
           },
         },
@@ -227,7 +240,7 @@ export async function getAdvisor(req: AuthRequest, res: Response) {
       throw new AppError('Student record not found', 404);
     }
 
-    if (!student.advisor) {
+    if (!student.users_students_advisor_idTousers) {
       return res.json({
         success: true,
         data: null,
@@ -238,26 +251,29 @@ export async function getAdvisor(req: AuthRequest, res: Response) {
     res.json({
       success: true,
       data: {
-        name: student.advisor.fullName,
-        email: student.advisor.email,
-        department: student.advisor.faculty?.department,
-        office: student.advisor.faculty?.office,
-        officeHours: student.advisor.faculty?.officeHours,
-        title: student.advisor.faculty?.title,
+        name: student.users_students_advisor_idTousers.full_name,
+        email: student.users_students_advisor_idTousers.email,
+        department: student.users_students_advisor_idTousers.faculty?.department,
+        office: student.users_students_advisor_idTousers.faculty?.office,
+        officeHours: student.users_students_advisor_idTousers.faculty?.office_hours,
+        title: student.users_students_advisor_idTousers.faculty?.title,
       },
     });
+    return;
   } catch (error) {
     if (error instanceof AppError) {
       res.status(error.statusCode).json({
         success: false,
         message: error.message,
       });
+      return;
     } else {
       console.error('Get advisor error:', error);
       res.status(500).json({
         success: false,
         message: 'Failed to fetch advisor information',
       });
+      return;
     }
   }
 }
@@ -265,7 +281,7 @@ export async function getAdvisor(req: AuthRequest, res: Response) {
 /**
  * Get course plan (placeholder for future implementation)
  */
-export async function getCoursePlan(req: AuthRequest, res: Response) {
+export async function getCoursePlan(_req: AuthRequest, res: Response) {
   try {
     // This would retrieve a saved course plan
     // For now, return empty
@@ -288,7 +304,7 @@ export async function getCoursePlan(req: AuthRequest, res: Response) {
 /**
  * Save course plan (placeholder for future implementation)
  */
-export async function saveCoursePlan(req: AuthRequest, res: Response) {
+export async function saveCoursePlan(_req: AuthRequest, res: Response) {
   try {
     // This would save a course plan
     // For now, just acknowledge

@@ -2,6 +2,20 @@ import { Request } from 'express';
 import { JWTPayload, SafeUser, UserRole } from './user.types';
 
 /**
+ * Extend Express Request to include rateLimit property from express-rate-limit
+ */
+declare module 'express-serve-static-core' {
+  interface Request {
+    rateLimit?: {
+      limit: number;
+      remaining: number;
+      resetTime: Date;
+      totalHits: number;
+    };
+  }
+}
+
+/**
  * Authenticated Request - Extends Express Request with user information
  */
 export interface AuthRequest extends Request {

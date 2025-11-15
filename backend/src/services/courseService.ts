@@ -20,13 +20,13 @@ export interface CourseFilters {
  * Get all courses with filters
  */
 export async function getAllCourses(filters: CourseFilters = {}) {
-  const where: Prisma.CourseWhereInput = {};
+  const where: Prisma.coursesWhereInput = {};
 
   // Build where clause
   if (filters.search) {
     where.OR = [
-      { courseCode: { contains: filters.search, mode: 'insensitive' } },
-      { courseName: { contains: filters.search, mode: 'insensitive' } },
+      { course_code: { contains: filters.search, mode: 'insensitive' } },
+      { course_name: { contains: filters.search, mode: 'insensitive' } },
       { department: { contains: filters.search, mode: 'insensitive' } }
     ];
   }
@@ -54,20 +54,20 @@ export async function getAllCourses(filters: CourseFilters = {}) {
   }
 
   if (filters.availableOnly) {
-    where.currentEnrollment = { lt: prisma.course.fields.maxCapacity };
+    where.current_enrollment = { lt: prisma.courses.fields.max_capacity };
   }
 
-  const courses = await prisma.course.findMany({
+  const courses = await prisma.courses.findMany({
     where,
     include: {
-      instructor: {
+      users: {
         select: {
           id: true,
-          fullName: true,
+          full_name: true,
           email: true
         }
       },
-      timeSlots: true,
+      time_slots: true,
       _count: {
         select: {
           enrollments: {
@@ -80,7 +80,7 @@ export async function getAllCourses(filters: CourseFilters = {}) {
     },
     orderBy: [
       { department: 'asc' },
-      { courseCode: 'asc' }
+      { course_code: 'asc' }
     ]
   });
 
@@ -91,18 +91,18 @@ export async function getAllCourses(filters: CourseFilters = {}) {
  * Get course by ID
  */
 export async function getCourseById(id: number) {
-  const course = await prisma.course.findUnique({
+  const course = await prisma.courses.findUnique({
     where: { id },
     include: {
-      instructor: {
+      users: {
         select: {
           id: true,
-          fullName: true,
+          full_name: true,
           email: true,
           department: true
         }
       },
-      timeSlots: true,
+      time_slots: true,
       enrollments: {
         where: {
           status: 'CONFIRMED'
@@ -110,11 +110,11 @@ export async function getCourseById(id: number) {
         select: {
           id: true,
           status: true,
-          enrolledAt: true,
-          user: {
+          enrolled_at: true,
+          users: {
             select: {
-              userIdentifier: true,
-              fullName: true
+              user_identifier: true,
+              full_name: true
             }
           }
         }
@@ -133,23 +133,23 @@ export async function getCourseById(id: number) {
  * Search courses
  */
 export async function searchCourses(query: string) {
-  const courses = await prisma.course.findMany({
+  const courses = await prisma.courses.findMany({
     where: {
       OR: [
-        { courseCode: { contains: query, mode: 'insensitive' } },
-        { courseName: { contains: query, mode: 'insensitive' } },
+        { course_code: { contains: query, mode: 'insensitive' } },
+        { course_name: { contains: query, mode: 'insensitive' } },
         { department: { contains: query, mode: 'insensitive' } },
         { description: { contains: query, mode: 'insensitive' } }
       ],
       status: { in: [CourseStatus.ACTIVE, CourseStatus.FULL] }
     },
     include: {
-      instructor: {
+      users: {
         select: {
-          fullName: true
+          full_name: true
         }
       },
-      timeSlots: true
+      time_slots: true
     },
     take: 50
   });
@@ -161,7 +161,7 @@ export async function searchCourses(query: string) {
  * Get departments
  */
 export async function getDepartments() {
-  const departments = await prisma.course.findMany({
+  const departments = await prisma.courses.findMany({
     select: {
       department: true
     },
@@ -171,37 +171,38 @@ export async function getDepartments() {
     }
   });
 
-  return departments.map(d => d.department);
+  return departments.map((d: any) => d.department);
 }
 
 /**
  * Create course (admin only)
  */
 export async function createCourse(data: any) {
-  const course = await prisma.course.create({
+  const course = await prisma.courses.create({
     data: {
-      courseCode: data.courseCode,
-      courseName: data.courseName,
+      course_code: data.courseCode,
+      course_name: data.courseName,
       department: data.department,
       credits: data.credits,
-      maxCapacity: data.maxCapacity,
+      max_capacity: data.maxCapacity,
       description: data.description,
       prerequisites: data.prerequisites,
       semester: data.semester,
       year: data.year,
       status: data.status || CourseStatus.ACTIVE,
-      instructorId: data.instructorId,
-      timeSlots: data.timeSlots ? {
+      instructor_id: data.instructorId,
+      updated_at: new Date(),
+      time_slots: data.timeSlots ? {
         create: data.timeSlots
       } : undefined
     },
     include: {
-      instructor: {
+      users: {
         select: {
-          fullName: true
+          full_name: true
         }
       },
-      timeSlots: true
+      time_slots: true
     }
   });
 
@@ -212,28 +213,28 @@ export async function createCourse(data: any) {
  * Update course (admin only)
  */
 export async function updateCourse(id: number, data: any) {
-  const course = await prisma.course.update({
+  const course = await prisma.courses.update({
     where: { id },
     data: {
-      courseCode: data.courseCode,
-      courseName: data.courseName,
+      course_code: data.courseCode,
+      course_name: data.courseName,
       department: data.department,
       credits: data.credits,
-      maxCapacity: data.maxCapacity,
+      max_capacity: data.maxCapacity,
       description: data.description,
       prerequisites: data.prerequisites,
       semester: data.semester,
       year: data.year,
       status: data.status,
-      instructorId: data.instructorId
+      instructor_id: data.instructorId
     },
     include: {
-      instructor: {
+      users: {
         select: {
-          fullName: true
+          full_name: true
         }
       },
-      timeSlots: true
+      time_slots: true
     }
   });
 
@@ -245,9 +246,9 @@ export async function updateCourse(id: number, data: any) {
  */
 export async function deleteCourse(id: number) {
   // Check if course has enrollments
-  const enrollmentCount = await prisma.enrollment.count({
+  const enrollmentCount = await prisma.enrollments.count({
     where: {
-      courseId: id,
+      course_id: id,
       status: { in: ['CONFIRMED', 'WAITLISTED'] }
     }
   });
@@ -256,7 +257,7 @@ export async function deleteCourse(id: number) {
     throw new Error('Cannot delete course with active enrollments');
   }
 
-  await prisma.course.delete({
+  await prisma.courses.delete({
     where: { id }
   });
 

@@ -1,13 +1,21 @@
 import { Request, Response } from 'express';
+import { Prisma, EnrollmentStatus } from '@prisma/client';
+import prisma from '../config/prisma';
 import { AuthRequest } from '../middleware/auth';
-import { query, getClient } from '../config/database';
+
+type EvaluationError = Error & { code?: string; status?: number };
+
+const createEvaluationError = (code: string, message: string, status = 400): EvaluationError => {
+  const error = new Error(message) as EvaluationError;
+  error.code = code;
+  error.status = status;
+  return error;
+};
 
 /**
  * Submit a course evaluation
  */
-export async function submitEvaluation(req: AuthRequest, res: Response) {
-  const client = await getClient();
-
+export async function submitEvaluation(req: AuthRequest, res: Response): Promise<void> {
   try {
     const {
       student_id,
@@ -57,102 +65,97 @@ export async function submitEvaluation(req: AuthRequest, res: Response) {
       }
     }
 
-    await client.query('BEGIN');
-
-    // Check if student is enrolled in the course
-    const enrollmentCheck = await client.query(
-      `SELECT e.* FROM enrollments e
+    const evaluation = await prisma.$transaction(async (tx) => {
+      const enrollment = await tx.$queryRaw<Array<Record<string, any>>>(Prisma.sql`
+        SELECT e.*
+        FROM enrollments e
        JOIN courses c ON e.course_id = c.id
-       WHERE e.user_id = $1
-       AND c.id = $2
-       AND c.semester = $3
-       AND c.year = $4
-       AND e.status = 'ENROLLED'`,
-      [student_id, course_id, term, year]
-    );
+        WHERE e.user_id = ${student_id}
+          AND c.id = ${course_id}
+          AND c.semester = ${term}
+          AND c.year = ${year}
+          AND e.status = 'CONFIRMED'
+      `);
 
-    if (enrollmentCheck.rows.length === 0) {
-      await client.query('ROLLBACK');
-      return res.status(403).json({
-        success: false,
-        error: 'You must be enrolled in this course to submit an evaluation',
-      });
-    }
+      if (enrollment.length === 0) {
+        throw createEvaluationError(
+          'NotEnrolled',
+          'You must be enrolled in this course to submit an evaluation',
+          403
+        );
+      }
 
-    // Check if evaluation already exists (UPSERT)
-    const existingEvaluation = await client.query(
-      `SELECT * FROM course_evaluations
-       WHERE student_id = $1 AND course_id = $2 AND term = $3 AND year = $4`,
-      [student_id, course_id, term, year]
-    );
+      const existing = await tx.$queryRaw<Array<Record<string, any>>>(Prisma.sql`
+        SELECT *
+        FROM course_evaluations
+        WHERE student_id = ${student_id}
+          AND course_id = ${course_id}
+          AND term = ${term}
+          AND year = ${year}
+      `);
 
-    let result;
+      const payload = {
+        overall: Number.parseInt(overall_rating),
+        instructor: Number.parseInt(instructor_rating),
+        content: Number.parseInt(course_content_rating),
+        workload: Number.parseInt(workload_rating),
+        comments: comments || null,
+        anonymous: is_anonymous !== undefined ? is_anonymous : true,
+      };
 
-    if (existingEvaluation.rows.length > 0) {
-      // Update existing evaluation
-      result = await client.query(
-        `UPDATE course_evaluations
-         SET overall_rating = $1,
-             instructor_rating = $2,
-             course_content_rating = $3,
-             workload_rating = $4,
-             comments = $5,
-             is_anonymous = $6,
+      if (existing.length > 0) {
+        const updated = await tx.$queryRaw<Array<Record<string, unknown>>>(Prisma.sql`
+          UPDATE course_evaluations
+          SET overall_rating = ${payload.overall},
+              instructor_rating = ${payload.instructor},
+              course_content_rating = ${payload.content},
+              workload_rating = ${payload.workload},
+              comments = ${payload.comments},
+              is_anonymous = ${payload.anonymous},
              submitted_at = CURRENT_TIMESTAMP
-         WHERE student_id = $7 AND course_id = $8 AND term = $9 AND year = $10
-         RETURNING *`,
-        [
-          parseInt(overall_rating),
-          parseInt(instructor_rating),
-          parseInt(course_content_rating),
-          parseInt(workload_rating),
-          comments || null,
-          is_anonymous !== undefined ? is_anonymous : true,
-          student_id,
-          course_id,
-          term,
-          year,
-        ]
-      );
-    } else {
-      // Create new evaluation
-      result = await client.query(
-        `INSERT INTO course_evaluations
+          WHERE student_id = ${student_id}
+            AND course_id = ${course_id}
+            AND term = ${term}
+            AND year = ${year}
+          RETURNING *
+        `);
+
+        return updated[0];
+      }
+
+      const created = await tx.$queryRaw<Array<Record<string, unknown>>>(Prisma.sql`
+        INSERT INTO course_evaluations
          (student_id, course_id, term, year, overall_rating, instructor_rating,
           course_content_rating, workload_rating, comments, is_anonymous, submitted_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, CURRENT_TIMESTAMP)
-         RETURNING *`,
-        [
-          student_id,
-          course_id,
-          term,
-          year,
-          parseInt(overall_rating),
-          parseInt(instructor_rating),
-          parseInt(course_content_rating),
-          parseInt(workload_rating),
-          comments || null,
-          is_anonymous !== undefined ? is_anonymous : true,
-        ]
-      );
-    }
+        VALUES
+          (${student_id}, ${course_id}, ${term}, ${year}, ${payload.overall}, ${payload.instructor},
+           ${payload.content}, ${payload.workload}, ${payload.comments}, ${payload.anonymous}, CURRENT_TIMESTAMP)
+        RETURNING *
+      `);
 
-    await client.query('COMMIT');
+      return created[0];
+    });
 
     res.status(201).json({
       success: true,
-      data: result.rows[0],
+      data: evaluation,
       message: 'Course evaluation submitted successfully',
     });
   } catch (error) {
-    await client.query('ROLLBACK');
     console.error('Submit evaluation error:', error);
+
+    const evaluationError = error as EvaluationError;
+    if (evaluationError.code) {
+      return res.status(evaluationError.status ?? 400).json({
+        success: false,
+        error: evaluationError.message,
+      });
+    }
+
     res.status(500).json({
       success: false,
       error: 'Failed to submit course evaluation',
     });
-  } finally {
-    client.release();
   }
 }
 
@@ -163,7 +166,7 @@ export async function getMyEvaluations(req: Request, res: Response) {
   try {
     const { studentId } = req.params;
 
-    const queryText = `
+    const evaluations = await prisma.$queryRaw<Array<Record<string, unknown>>>(Prisma.sql`
       SELECT
         e.*,
         c.course_code,
@@ -171,15 +174,13 @@ export async function getMyEvaluations(req: Request, res: Response) {
         c.department
       FROM course_evaluations e
       JOIN courses c ON e.course_id = c.id
-      WHERE e.student_id = $1
+      WHERE e.student_id = ${Number.parseInt(studentId, 10)}
       ORDER BY e.submitted_at DESC
-    `;
-
-    const result = await query(queryText, [parseInt(studentId)]);
+    `);
 
     res.status(200).json({
       success: true,
-      data: result.rows,
+      data: evaluations,
     });
   } catch (error) {
     console.error('Get my evaluations error:', error);
@@ -197,51 +198,46 @@ export async function getCourseStats(req: Request, res: Response) {
   try {
     const { courseId } = req.params;
 
-    // Get aggregated statistics
-    const statsQuery = `
+    const stats = await prisma.$queryRaw<Array<Record<string, unknown>>>(Prisma.sql`
       SELECT
-        COUNT(*) as total_responses,
-        ROUND(AVG(overall_rating)::numeric, 2) as average_overall_rating,
-        ROUND(AVG(instructor_rating)::numeric, 2) as average_instructor_rating,
-        ROUND(AVG(course_content_rating)::numeric, 2) as average_course_content_rating,
-        ROUND(AVG(workload_rating)::numeric, 2) as average_workload_rating
+        COUNT(*) AS total_responses,
+        ROUND(AVG(overall_rating)::numeric, 2) AS average_overall_rating,
+        ROUND(AVG(instructor_rating)::numeric, 2) AS average_instructor_rating,
+        ROUND(AVG(course_content_rating)::numeric, 2) AS average_course_content_rating,
+        ROUND(AVG(workload_rating)::numeric, 2) AS average_workload_rating
       FROM course_evaluations
-      WHERE course_id = $1
-    `;
+      WHERE course_id = ${Number.parseInt(courseId, 10)}
+    `);
 
-    const statsResult = await query(statsQuery, [parseInt(courseId)]);
-
-    // Get non-anonymous comments
-    const commentsQuery = `
+    const comments = await prisma.$queryRaw<Array<Record<string, unknown>>>(Prisma.sql`
       SELECT
         e.comments,
         e.submitted_at,
         CASE
           WHEN e.is_anonymous = true THEN 'Anonymous'
           ELSE u.full_name
-        END as student_name
+        END AS student_name
       FROM course_evaluations e
       LEFT JOIN users u ON e.student_id = u.id
-      WHERE e.course_id = $1
+      WHERE e.course_id = ${Number.parseInt(courseId, 10)}
       AND e.comments IS NOT NULL
       AND e.comments != ''
       ORDER BY e.submitted_at DESC
-    `;
+    `);
 
-    const commentsResult = await query(commentsQuery, [parseInt(courseId)]);
-
-    // Get course information
-    const courseQuery = await query(
-      'SELECT course_code, course_name, department FROM courses WHERE id = $1',
-      [parseInt(courseId)]
-    );
+    const courseInfo = await prisma.$queryRaw<Array<Record<string, unknown>>>(Prisma.sql`
+      SELECT course_code, course_name, department
+      FROM courses
+      WHERE id = ${Number.parseInt(courseId, 10)}
+      LIMIT 1
+    `);
 
     res.status(200).json({
       success: true,
       data: {
-        course: courseQuery.rows[0],
-        statistics: statsResult.rows[0],
-        comments: commentsResult.rows,
+        course: courseInfo[0] || null,
+        statistics: stats[0] || null,
+        comments,
       },
     });
   } catch (error) {
@@ -256,47 +252,163 @@ export async function getCourseStats(req: Request, res: Response) {
 /**
  * Get courses that a student is enrolled in but hasn't evaluated yet
  */
-export async function getPendingEvaluations(req: Request, res: Response) {
+export async function getPendingEvaluations(req: Request, res: Response): Promise<void> {
   try {
     const { studentId } = req.params;
+    const studentIdNum = Number.parseInt(studentId, 10);
 
-    // Get courses from last 3 weeks to end of term that haven't been evaluated
-    const queryText = `
-      SELECT DISTINCT
-        c.id,
-        c.course_code,
-        c.course_name,
-        c.department,
-        c.semester,
-        c.year,
-        c.credits,
-        i.full_name as instructor_name
-      FROM enrollments e
-      JOIN courses c ON e.course_id = c.id
-      LEFT JOIN users i ON c.instructor_id = i.id
-      WHERE e.user_id = $1
-      AND e.status = 'ENROLLED'
-      AND NOT EXISTS (
-        SELECT 1 FROM course_evaluations ce
-        WHERE ce.student_id = e.user_id
-        AND ce.course_id = c.id
-        AND ce.term = c.semester
-        AND ce.year = c.year
-      )
-      ORDER BY c.semester, c.year, c.course_code
-    `;
+    if (isNaN(studentIdNum) || studentIdNum <= 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid student ID',
+      });
+    }
 
-    const result = await query(queryText, [parseInt(studentId)]);
+    // First, check if course_evaluations table exists by trying a simple query
+    // If it doesn't exist, we'll return an empty array for now
+    let pending: Array<Record<string, unknown>> = [];
+    
+    try {
+      // Use Prisma's query builder approach to avoid prepared statement issues
+      // Get all confirmed enrollments for the student (CONFIRMED status)
+      const enrollments = await prisma.enrollments.findMany({
+        where: {
+          user_id: studentIdNum,
+          status: EnrollmentStatus.CONFIRMED,
+        },
+        include: {
+          courses: true,
+        },
+      });
+
+      // Check which courses have evaluations
+      // Since course_evaluations table might not exist in Prisma schema,
+      // we'll use raw SQL but with better error handling
+      try {
+        const evaluatedCourses = await prisma.$queryRaw<Array<{ course_id: number; term: string; year: number }>>(Prisma.sql`
+          SELECT DISTINCT course_id, term, year
+          FROM course_evaluations
+          WHERE student_id = ${studentIdNum}
+        `);
+
+        const evaluatedSet = new Set(
+          evaluatedCourses.map(e => `${e.course_id}-${e.term}-${e.year}`)
+        );
+
+        // Filter out courses that have been evaluated
+        pending = enrollments
+          .filter(enrollment => {
+            const semester = enrollment.courses.semester;
+            const year = enrollment.courses.year;
+            const key = `${enrollment.course_id}-${semester}-${year}`;
+            return !evaluatedSet.has(key);
+          })
+          .map(enrollment => ({
+            id: enrollment.courses.id,
+            course_code: enrollment.courses.course_code,
+            course_name: enrollment.courses.course_name,
+            department: enrollment.courses.department,
+            semester: enrollment.courses.semester,
+            year: enrollment.courses.year,
+            credits: enrollment.courses.credits,
+            instructor_name: null, // Instructor relation not available in current Prisma schema
+          }));
+      } catch (evalError: any) {
+        // If course_evaluations table doesn't exist, return all enrollments
+        if (evalError.code === '42P01' || evalError.message?.includes('does not exist')) {
+          console.warn('course_evaluations table does not exist, returning all enrollments');
+          pending = enrollments.map(enrollment => ({
+            id: enrollment.courses.id,
+            course_code: enrollment.courses.course_code,
+            course_name: enrollment.courses.course_name,
+            department: enrollment.courses.department,
+            semester: enrollment.courses.semester,
+            year: enrollment.courses.year,
+            credits: enrollment.courses.credits,
+            instructor_name: null, // Instructor relation not available in current Prisma schema
+          }));
+        } else {
+          throw evalError;
+        }
+      }
+    } catch (dbError: any) {
+      console.error('Database error in getPendingEvaluations:', dbError);
+      console.error('Error details:', {
+        name: dbError.name,
+        code: dbError.code,
+        message: dbError.message,
+        meta: dbError.meta,
+      });
+      
+      // If it's a Prisma validation error, return 400 with more details
+      if (dbError.name === 'PrismaClientValidationError' || 
+          dbError.message?.includes('Invalid value') || 
+          dbError.message?.includes('Unknown field') ||
+          dbError.message?.includes('Invalid enum value')) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid query parameters',
+          details: dbError.message,
+          code: dbError.code,
+        });
+      }
+      
+      // If it's a connection/prepared statement error, return 503
+      if (dbError.code === '42P05' || dbError.message?.includes('prepared statement')) {
+        return res.status(503).json({
+          success: false,
+          error: 'Database connection issue. Please try again in a moment.',
+          retry: true
+        });
+      }
+      
+      // If it's a relation error, try without the relation
+      if (dbError.message?.includes('relation') || dbError.code === 'P2025') {
+        console.warn('Relation error, trying without term relation');
+        try {
+          const enrollments = await prisma.enrollments.findMany({
+            where: {
+              user_id: studentIdNum,
+              status: EnrollmentStatus.CONFIRMED,
+            },
+            include: {
+              courses: true,
+            },
+          });
+          
+          pending = enrollments.map(enrollment => ({
+            id: enrollment.courses.id,
+            course_code: enrollment.courses.course_code,
+            course_name: enrollment.courses.course_name,
+            department: enrollment.courses.department,
+            semester: enrollment.courses.semester,
+            year: enrollment.courses.year,
+            credits: enrollment.courses.credits,
+            instructor_name: null,
+          }));
+          
+          return res.status(200).json({
+            success: true,
+            data: pending,
+          });
+        } catch (fallbackError: any) {
+          console.error('Fallback query also failed:', fallbackError);
+          throw dbError; // Throw original error
+        }
+      }
+      
+      throw dbError;
+    }
 
     res.status(200).json({
       success: true,
-      data: result.rows,
+      data: pending,
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Get pending evaluations error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to fetch pending evaluations',
+      error: error.message || 'Failed to fetch pending evaluations',
     });
   }
 }
