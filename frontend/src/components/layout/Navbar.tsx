@@ -28,7 +28,7 @@ export function Navbar({ onMenuClick }: NavbarProps) {
   ];
 
   return (
-    <nav className="sticky top-0 z-40 w-full border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+    <nav className="sticky top-0 z-40 w-full navbar-glass shadow-lg shadow-black/[0.03]">
       <div className="max-w-full mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex h-16 items-center justify-between">
           {/* Left section: Logo and main nav */}
@@ -36,18 +36,18 @@ export function Navbar({ onMenuClick }: NavbarProps) {
             {/* Mobile menu button */}
             <button
               onClick={onMenuClick}
-              className="lg:hidden inline-flex items-center justify-center p-2 rounded-lg text-foreground hover:bg-accent transition-colors"
+              className="lg:hidden inline-flex items-center justify-center p-2 rounded-xl text-foreground hover:bg-primary/10 transition-all duration-200"
             >
-              {isSidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+              <Menu className="h-5 w-5" />
             </button>
 
             {/* Logo */}
-            <Link to="/" className="flex items-center gap-2 group">
-              <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-primary text-primary-foreground group-hover:scale-105 transition-transform">
+            <Link to="/" className="flex items-center gap-2.5 group">
+              <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-primary/80 text-primary-foreground shadow-lg shadow-primary/25 group-hover:shadow-xl group-hover:shadow-primary/30 group-hover:scale-105 transition-all duration-200">
                 <GraduationCap className="h-5 w-5" />
               </div>
               <div className="hidden sm:block">
-                <h1 className="text-base font-bold text-foreground">CUHK-SZ SIS</h1>
+                <h1 className="text-base font-bold text-foreground tracking-tight">CUHK-SZ SIS</h1>
                 <p className="text-xs text-muted-foreground">Student Information System</p>
               </div>
             </Link>
@@ -59,9 +59,9 @@ export function Navbar({ onMenuClick }: NavbarProps) {
                   key={item.path}
                   to={item.path}
                   className={cn(
-                    'px-3 py-2 rounded-lg text-sm font-medium transition-colors',
+                    'px-4 py-2 rounded-xl text-sm font-semibold transition-all duration-200',
                     isActive(item.path)
-                      ? 'bg-accent text-accent-foreground'
+                      ? 'bg-primary/10 text-primary shadow-sm'
                       : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground'
                   )}
                 >
