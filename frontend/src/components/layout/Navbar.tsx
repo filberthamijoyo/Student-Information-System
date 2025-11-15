@@ -1,7 +1,7 @@
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { ThemeToggle } from '../ui/ThemeToggle';
-import { Menu, GraduationCap, ChevronDown, LogOut, User } from 'lucide-react';
+import { Menu, X, GraduationCap, ChevronDown, LogOut, User } from 'lucide-react';
 import { Fragment } from 'react';
 import { cn } from '../../lib/utils';
 import { Menu as HeadlessMenu, Transition } from '@headlessui/react';
@@ -11,7 +11,7 @@ interface NavbarProps {
   isSidebarOpen: boolean;
 }
 
-export function Navbar({ onMenuClick }: NavbarProps) {
+export function Navbar({ onMenuClick, isSidebarOpen }: NavbarProps) {
   const { user, logout } = useAuth();
   const location = useLocation();
 
