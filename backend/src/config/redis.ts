@@ -16,6 +16,8 @@ const redisConfig = {
   host: process.env.REDIS_HOST || 'localhost',
   port: parseInt(process.env.REDIS_PORT || '6379'),
   password: process.env.REDIS_PASSWORD || undefined,
+  // Support for Redis URL (like Upstash)
+  url: process.env.REDIS_URL,
   retryStrategy: (times: number) => {
     connectionAttempts = times;
     // Exponential backoff: 50ms, 100ms, 200ms, 400ms, 800ms, 1600ms, max 3000ms
