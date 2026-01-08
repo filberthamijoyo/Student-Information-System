@@ -2,8 +2,9 @@ services:
   - type: web
     name: student-info-system-api
     runtime: node
-    buildCommand: "cd backend && npm run build"
-    startCommand: "cd backend && npm start"
+    rootDir: backend
+    buildCommand: npm run build
+    startCommand: npm start
     envVars:
       - key: NODE_ENV
         value: production
@@ -21,11 +22,8 @@ services:
 
   - type: pserv
     name: student-info-db
-    runtime: postgresql
     plan: starter
-    databaseName: student_info_system
-    user: student_info_user
 
   - type: redis
     name: student-info-redis
-    ipAllowList: []
+    plan: starter
