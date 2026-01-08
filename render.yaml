@@ -20,8 +20,9 @@ services:
           name: student-info-redis
           property: connectionString
 
-  - type: pserv
+  - type: postgres
     name: student-info-db
+    plan: free
 
   - type: redis
     name: student-info-redis
