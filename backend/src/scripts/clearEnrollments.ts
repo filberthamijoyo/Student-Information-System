@@ -11,7 +11,7 @@ async function clearEnrollments() {
   console.log(`Clearing enrollments for user ID: ${userId}`);
 
   try {
-    const deleted = await prisma.enrollment.deleteMany({
+    const deleted = await prisma.enrollments.deleteMany({
       where: {
         userId: userId
       }
