@@ -22,8 +22,7 @@ services:
 
   - type: pserv
     name: student-info-db
-    plan: starter
 
   - type: redis
     name: student-info-redis
-    plan: starter
+    ipAllowList: []
