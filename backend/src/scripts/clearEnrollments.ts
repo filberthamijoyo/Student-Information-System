@@ -13,7 +13,7 @@ async function clearEnrollments() {
   try {
     const deleted = await prisma.enrollments.deleteMany({
       where: {
-        userId: userId
+        user_id: userId
       }
     });
 

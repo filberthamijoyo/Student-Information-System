@@ -1,7 +1,6 @@
 import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth';
 import prisma from '../config/prisma';
-import { AppError } from '../utils/errors';
 
 /**
  * Get personal information for the authenticated user

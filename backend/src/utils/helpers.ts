@@ -9,7 +9,6 @@ export const calculatePagination = (
   total: number
 ): PaginationMeta => {
   const totalPages = Math.ceil(total / limit);
-  const offset = (page - 1) * limit;
 
   return {
     page,
