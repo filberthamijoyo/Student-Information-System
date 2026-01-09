@@ -10,7 +10,7 @@
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
     "build": "npx prisma generate",
-    "start": "npx ts-node src/server.ts",
+    "start": "npx ts-node --max-old-space-size=512 src/server.ts",
     "worker": "ts-node-dev --respawn --transpile-only src/workers/enrollmentWorker.ts",
     "migrate": "ts-node database/migrate.ts",
     "prisma:generate": "npx prisma generate",
