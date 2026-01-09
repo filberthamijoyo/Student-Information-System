@@ -9,7 +9,7 @@
   },
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
-    "build": "npx prisma generate && tsc --noEmitOnError false",
+    "build": "npx prisma generate && tsc --skipLibCheck",
     "start": "node dist/server.js",
     "worker": "ts-node-dev --respawn --transpile-only src/workers/enrollmentWorker.ts",
     "migrate": "ts-node database/migrate.ts",
